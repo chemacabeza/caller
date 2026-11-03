@@ -1,0 +1,125 @@
+# Llamadas en Español
+
+Web app that places a real phone call to a Spanish number, has a clear Spain-Spanish voice (`es-ES`, Amazon Polly via Twilio) ask your question, listens to the answer with Spanish speech recognition, and shows the recognized words in the **“Respuesta recibida”** panel.
+
+```
+[Llamar] ─▶ backend ─▶ Twilio REST: create call (timeLimit 120 s, record=false)
+                         │
+recipient picks up ─▶ Twilio fetches /twilio/voice/:id
+                         ◀─ <Pause 2s/> <Say Polly.Lucia-Neural es-ES>message</Say> <Gather speech es-ES/>
+answer (or silence) ─▶ /twilio/gather/:id?attempt=N
+                         ◀─ speech:   <Say>Muchas gracias. Que tenga un buen día.</Say><Hangup/>
+                         ◀─ silence (1st): repeat question + <Gather/>
+                         ◀─ silence (2nd): goodbye + <Hangup/>  → "No se recibió una respuesta."
+status changes ─▶ /twilio/status/:id  (ringing, in-progress, completed, busy, no-answer…)
+browser ◀─ server-sent events (polling fallback) with status + transcript
+```
+
+Call completion (`status`: Llamando / En llamada / Finalizada / Ocupado / Sin respuesta / Error) is tracked **separately** from whether an answer was received (`answerStatus`: pendiente / recibida / sin_respuesta). The literal transcript is always shown. A small, conservative heuristic lists any clock times it finds in it. If it finds none, it says so and never invents an opening time.
+
+## Contents
+
+```
+server/   Node + Express + TypeScript: API, Twilio webhooks, TwiML, demo simulator
+web/      React + TypeScript (Vite): the Spanish UI
+Dockerfile, docker-compose.yml, start.sh, stop.sh
+```
+
+## Quick start (Docker)
+
+```bash
+cp server/.env.example server/.env   # start.sh does this for you if missing
+./start.sh                           # http://localhost:3001
+./start.sh --tunnel                  # also starts an ngrok HTTPS tunnel (see below)
+./stop.sh                            # stop (add --clean to remove the image)
+```
+
+If `APP_PASSWORD` is empty, a temporary password is printed by `start.sh` (and in `docker compose logs app`).
+
+Without Twilio configuration the app runs in **demo mode** only.
+
+## Running locally without Docker (development)
+
+Requires Node 22+.
+
+```bash
+npm install
+npm run dev        # backend on :3001 (tsx watch) + frontend on :5173 (Vite, proxies /api)
+npm test           # server + web tests (Twilio is mocked; no calls are made)
+npm run build && npm start   # production build served by the backend on :3001
+```
+
+Open http://localhost:5173 in development, or http://localhost:3001 after `npm run build`.
+
+## Configuration (`server/.env`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `TWILIO_ACCOUNT_SID` | for real calls | `AC…` from Twilio Console → Account → API keys & tokens |
+| `TWILIO_AUTH_TOKEN` | for real calls | Auth token (also used to validate webhook signatures) |
+| `TWILIO_FROM_NUMBER` | for real calls | A Twilio number you own, or a verified caller ID, in E.164. Must differ from the destination. `TWILIO_PHONE_NUMBER` is accepted as an alias. |
+| `PUBLIC_BASE_URL` | for real calls | Public **HTTPS** URL forwarding to port 3001, no trailing slash |
+| `TTS_VOICE` | no | Default `Polly.Lucia-Neural`. Other es-ES voices: `Polly.Sergio-Neural`, `Polly.Lucia-Generative` / `Polly.Sergio-Generative` (public beta), `Polly.Conchita`, `Polly.Enrique` |
+| `TTS_RATE` | no | SSML prosody rate for Polly voices, default `95%`; empty disables |
+| `GREETING_PAUSE_SECONDS` | no | Silence after pick-up for the recipient’s “¿Diga?” (default 2) |
+| `GATHER_TIMEOUT_SECONDS` | no | Wait for the recipient to start speaking (default 8) |
+| `SPEECH_TIMEOUT_SECONDS` | no | Silence that ends their answer (default 3, so normal pauses are not cut off) |
+| `SPEECH_MODEL` | no | Optional Twilio `speechModel` (e.g. `phone_call`, `googlev2_telephony`) |
+| `MAX_CALL_SECONDS` | no | Hard limit, default and max 120 |
+| `APP_PASSWORD` | recommended | Password for the web UI |
+| `COOKIE_SECURE` | no | `true` if you open the UI over HTTPS |
+| `TRANSCRIPT_TTL_MINUTES` | no | How long a finished call stays in memory (default 60) |
+
+Voice names were checked against Twilio’s [text-to-speech docs](https://www.twilio.com/docs/voice/twiml/say/text-speech) and [`<Gather>` docs](https://www.twilio.com/docs/voice/twiml/gather) (November 2026). Twilio notes that third-party voices can change, so the voice is configurable.
+
+## Twilio setup
+
+1. **Account & credentials.** Sign up at twilio.com. In Console → *Account → API keys & tokens*, copy the **Account SID** and **Auth Token** into `server/.env`. Never commit that file (it is git-ignored and excluded from the Docker image). If a token is ever exposed, rotate it there.
+2. **Outgoing caller ID** (`TWILIO_FROM_NUMBER`). Either buy a Twilio voice number (*Phone Numbers → Buy a number*), or verify a number you own (*Phone Numbers → Manage → Verified Caller IDs*). Spanish (+34) Twilio numbers need a regulatory bundle (address + ID). A US number works, but the recipient will see a foreign number and may be less likely to pick up.
+3. **Enable calls to Spain.** Console → *Voice → Settings → Geo permissions* → tick **Spain**. Otherwise Twilio rejects the call (error 21215 / 13227, which the UI explains).
+4. **Trial account restrictions.**
+   - You can only call **verified** numbers (error 21219 otherwise).
+   - Twilio plays an English trial notice before your TwiML and asks the callee to **press a key**. A business receptionist will usually hang up before hearing your message. To call a business, upgrade the account.
+5. **Charges.** Outbound calls to Spain are billed per minute (landline and mobile prices differ). Text-to-speech and speech recognition (`<Gather input="speech">`) are billed separately. Check the current prices at twilio.com/voice/pricing/es. Each call is capped at 2 minutes and recording is off.
+
+## Public HTTPS URL for webhooks (local development)
+
+Twilio must reach `/twilio/voice/:id`, `/twilio/gather/:id`, and `/twilio/status/:id` on your machine over HTTPS. The backend passes these URLs to Twilio per call, so **you don’t configure anything on the Twilio phone number itself**.
+
+**ngrok** (free static domain recommended, so the URL doesn’t change):
+
+```bash
+ngrok config add-authtoken <token>
+ngrok http --url=your-subdomain.ngrok-free.app 3001
+# server/.env:  PUBLIC_BASE_URL=https://your-subdomain.ngrok-free.app
+```
+
+Or use the bundled container: set `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` in `server/.env`, then `./start.sh --tunnel`. The ngrok inspector runs at http://localhost:4040.
+
+**cloudflared**: `cloudflared tunnel --url http://localhost:3001` prints a random `https://…trycloudflare.com` URL. Put it in `PUBLIC_BASE_URL` and restart the backend (the URL changes on each run).
+
+Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart the backend after changing `.env`.
+
+## Security
+
+- Twilio credentials live only on the server. The browser never sees them.
+- The call-control API requires a password login: an HttpOnly, `SameSite=Strict` session cookie, plus a JSON-only rule as CSRF defence, and brute-force throttling.
+- Every Twilio webhook is checked against `X-Twilio-Signature` using the Auth Token and `PUBLIC_BASE_URL`. Invalid signatures get 403. Callbacks whose `CallSid` doesn’t match the call are ignored.
+- **Duplicate calls are prevented:** only one call can be active at a time (409 otherwise), with a lock covering the creation window. The *Llamar* button also disables itself synchronously.
+- Phone numbers are normalized and validated server-side (Spain only). Premium-rate prefixes (803, 806, 807, 905, 907) are refused.
+- Recording is disabled (`record: false`, no `<Record>`). Transcripts are held **in memory only**, visible only to the session that made the call, and deleted after `TRANSCRIPT_TTL_MINUTES`, on logout, or on restart.
+
+## Demo mode
+
+The **“Modo demostración”** checkbox (forced on when Twilio isn’t configured) runs the same state machine on the server without contacting Twilio. You can pick a scenario: answer with a schedule, answer without a time, silence (the question is repeated, then “No se recibió una respuesta”), busy, or no answer. Simulated calls carry `simulated: true`, the transcript is prefixed `[SIMULADO]`, and the UI shows purple **SIMULADO** badges with a dashed transcript box.
+
+## Testing
+
+- `npm test` runs the server tests (phone normalization, TwiML, answer heuristic, auth, duplicate protection, signature validation, full webhook flows, demo + SSE, all with a **mocked** Twilio provider) and the web tests (UI rendering, demo flow, double-click protection).
+- **Manual real-call test with a number you own.** Before calling any business, test the real integration with your own mobile:
+  1. Configure `server/.env` (all four Twilio variables), start the tunnel, and run `./start.sh` or `npm run dev`.
+  2. On a trial account, verify your mobile under *Verified Caller IDs* first.
+  3. Untick demo mode, enter your mobile (e.g. `612 34 56 78`), and press **Llamar**.
+  4. Answer, say “¿Sí?”, listen to the question, and reply e.g. “Abrimos a las nueve y media”. Then check that the transcript appears and the call ends after the thank-you.
+  5. Repeat, staying silent, to check that the question is repeated once and the call ends with “No se recibió una respuesta”.
+  6. Try **Colgar** while it rings. Check the call logs in Twilio Console → *Monitor → Logs → Calls* (and the ngrok inspector) if anything fails.

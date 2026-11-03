@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    image: llamadas-en-espanol:latest
+    container_name: llamadas-en-espanol
+    restart: unless-stopped
+    # Secrets are read at runtime from server/.env (git-ignored, not baked into the image).
+    env_file:
+      - path: server/.env
+        required: false
+    environment:
+      PORT: "3001"
+    ports:
+      - "127.0.0.1:${APP_PORT:-3001}:3001"
+
+  # Optional HTTPS tunnel so Twilio can reach the webhooks.
+  # Enabled with:  ./start.sh --tunnel   (needs NGROK_AUTHTOKEN and NGROK_DOMAIN in server/.env)
+  tunnel:
+    image: ngrok/ngrok:latest
+    profiles: ["tunnel"]
+    depends_on: [app]
+    restart: unless-stopped
+    # Only the ngrok token is passed (not the Twilio secrets). start.sh exports these from server/.env.
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    command: ["http", "--url=${NGROK_DOMAIN:-}", "app:3001"]
+    ports:
+      - "127.0.0.1:4040:4040"
