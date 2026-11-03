@@ -12,7 +12,7 @@
     "build": "npm run build -w server && npm run build -w web",
     "start": "npm run start -w server",
     "test": "npm test -w server && npm test -w web",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web && npm run typecheck -w e2e",
     "test:e2e": "npm run build -w web && npm test -w e2e",
     "test:all": "npm test && npm run test:e2e"
   },

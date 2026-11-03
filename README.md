@@ -1,5 +1,7 @@
 # Llamadas en Español
 
+[![CI](https://github.com/chemacabeza/caller/actions/workflows/ci.yml/badge.svg)](https://github.com/chemacabeza/caller/actions/workflows/ci.yml)
+
 Web app that places a real phone call to a Spanish number, has a clear Spain-Spanish voice (`es-ES`, Amazon Polly via Twilio) ask your question, listens to the answer with Spanish speech recognition, and shows the recognized words in the **“Respuesta recibida”** panel.
 
 ```
@@ -125,6 +127,8 @@ npx playwright show-report        # (inside e2e/) HTML report after a run
 ```
 
 First-time setup for the end-to-end tests: `npx playwright install chromium`.
+
+**CI.** `.github/workflows/ci.yml` runs on every push to `main`, on pull requests, and on manual dispatch. It has three parallel jobs: type-check + unit tests + build, the Playwright end-to-end suite (the HTML report and traces are uploaded as an artifact when it fails), and a Docker image build with a container smoke test. CI needs no secrets: the e2e suite uses fake credentials and a fake Twilio.
 
 ### End-to-end tests (`e2e/`)
 
