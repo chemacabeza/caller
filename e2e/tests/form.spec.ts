@@ -1,6 +1,10 @@
 import { test, expect, stubSpeechSynthesis, login, DEMO_URL, E2E } from '../support/fixtures';
 
 test.describe('Formulario de llamada', () => {
+  test('the help text names both supported countries', async ({ demoPage: page }) => {
+    await expect(page.getByText('Números de España (+34) o China (+86, por ejemplo +86 133 3115 7888).')).toBeVisible();
+  });
+
   test('is prefilled with the requested number and message, both editable', async ({ demoPage: page }) => {
     const number = page.getByLabel('Número de teléfono');
     const message = page.getByLabel('Mensaje que se reproducirá');
@@ -54,7 +58,9 @@ test.describe('Formulario de llamada', () => {
   });
 
   for (const [input, error] of [
-    ['+44 20 7946 0958', 'Por ahora solo se admiten números de España (+34).'],
+    ['+44 20 7946 0958', 'Por ahora solo se admiten números de España (+34) y China (+86).'],
+    ['+86 133 3115 788', 'Número chino no válido'],
+    ['13331157888', 'Por ahora solo se admiten números de España (+34) y China (+86).'],
     ['+34 955 74', 'Un número español debe tener 9 dígitos'],
     ['+34 806 12 34 56', 'tarificación especial'],
     ['955-abc-835', 'El número solo puede contener'],
@@ -65,6 +71,14 @@ test.describe('Formulario de llamada', () => {
       await expect(page.getByRole('alert')).toContainText(error);
       await expect(page.getByLabel('Número de teléfono')).toHaveAttribute('aria-invalid', 'true');
       await expect(page.locator('.status')).toHaveText('Preparado');
+    });
+  }
+
+  for (const input of ['+86 133 3115 7888', '0086 13331157888', '+8613331157888']) {
+    test(`accepts the Chinese mobile ${input} and shows it formatted`, async ({ demoPage: page }) => {
+      await page.getByLabel('Número de teléfono').fill(input);
+      await page.getByRole('button', { name: /Llamar/ }).click();
+      await expect(page.locator('.facts')).toContainText('+86 133 3115 7888');
     });
   }
 

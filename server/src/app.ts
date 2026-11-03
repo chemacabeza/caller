@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import twilio from 'twilio';
 import { configProblems, missingTwilioConfig, type AppConfig } from './config.js';
-import { normalizeSpanishNumber } from './phone.js';
-import { CallStore, isFinal, mapProviderStatus, type CallRecord } from './callStore.js';
+import { normalizePhoneNumber } from './phone.js';
+import { CallStore, errorPatch, isFinal, mapProviderStatus, type CallRecord } from './callStore.js';
+import { errorBody, msg } from './messages.js';
 import { createTwilioProvider, ProviderError, type VoiceProvider } from './provider.js';
 import { answerTwiml, giveUpTwiml, hangupTwiml, MAX_QUESTION_ATTEMPTS, repeatTwiml, thanksTwiml } from './twiml.js';
 import { DEMO_SCENARIOS, DemoSimulator, isDemoScenario } from './demo.js';
@@ -30,7 +31,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
   const demo = new DemoSimulator(store, demoStepMs);
   const auth = new Auth(cfg.appPassword, cfg.cookieSecure);
   const missing = missingTwilioConfig(cfg);
-  const realCallsPossible = missing.length === 0 && !configProblems(cfg).some((p) => p.startsWith('PUBLIC_BASE_URL'));
+  const realCallsPossible = missing.length === 0 && !configProblems(cfg).some((p) => p.code.startsWith('problem.public_url'));
   let voice: VoiceProvider | undefined = provider;
   const getProvider = () => (voice ??= createTwilioProvider(cfg));
 
@@ -62,7 +63,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
   api.use((req, res, next) => {
     // CSRF defence in addition to SameSite=Strict cookies: state-changing calls must be JSON.
     if (req.method !== 'GET' && req.method !== 'HEAD' && !req.is('application/json')) {
-      res.status(415).json({ error: 'Se esperaba Content-Type: application/json.' });
+      res.status(415).json(errorBody(msg('request.json_required')));
       return;
     }
     next();
@@ -73,7 +74,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     res.json({
       realCallsPossible,
       missing,
-      problems: configProblems(cfg),
+      problems: configProblems(cfg).map(({ code, text }) => ({ code, text })),
       voice: cfg.ttsVoice,
       language: cfg.ttsLanguage,
       fromNumberConfigured: Boolean(cfg.twilioFromNumber),
@@ -89,38 +90,38 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     const { to, message, demo: demoRequested, scenario } = req.body ?? {};
     const simulated = demoRequested === true;
 
-    const phone = normalizeSpanishNumber(to);
-    if (!phone.ok) return void res.status(400).json({ error: phone.error, field: 'to' });
+    const phone = normalizePhoneNumber(to);
+    if (!phone.ok) return void res.status(400).json(errorBody(phone.msg, { field: 'to' }));
 
     const text = typeof message === 'string' ? message.trim() : '';
-    if (!text) return void res.status(400).json({ error: 'Escriba el mensaje que se reproducirá.', field: 'message' });
+    if (!text) return void res.status(400).json(errorBody(msg('message.empty'), { field: 'message' }));
     if (text.length > MAX_MESSAGE_LENGTH) {
-      return void res.status(400).json({ error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`, field: 'message' });
+      return void res.status(400).json(errorBody(msg('message.too_long', { max: MAX_MESSAGE_LENGTH }), { field: 'message' }));
     }
 
     if (simulated && !isDemoScenario(scenario)) {
-      return void res.status(400).json({ error: 'Escenario de demostración no válido.' });
+      return void res.status(400).json(errorBody(msg('demo.bad_scenario')));
     }
     if (!simulated) {
       if (missing.length) {
-        return void res.status(503).json({ error: `Faltan variables de entorno en el servidor: ${missing.join(', ')}. Use el modo demostración o complete la configuración.` });
+        return void res.status(503).json(errorBody(msg('config.missing', { vars: missing.join(', ') })));
       }
       if (!realCallsPossible) {
-        return void res.status(503).json({ error: configProblems(cfg).join(' ') });
+        return void res.status(503).json(errorBody(msg('config.public_url_invalid')));
       }
       if (phone.e164 === cfg.twilioFromNumber) {
-        return void res.status(400).json({ error: 'El número de destino no puede ser el mismo que TWILIO_FROM_NUMBER.', field: 'to' });
+        return void res.status(400).json(errorBody(msg('call.same_as_from'), { field: 'to' }));
       }
     }
 
     // Duplicate-call protection: one active call at a time, plus a lock for the creation window.
     const active = store.active();
     if (active) {
-      return void res.status(409).json({ error: 'Ya hay una llamada en curso. Cuélguela antes de iniciar otra.', call: active.sessionId === req.sessionId ? CallStore.toPublic(active) : undefined });
+      return void res.status(409).json(errorBody(msg('call.active'), { call: active.sessionId === req.sessionId ? CallStore.toPublic(active) : undefined }));
     }
     const lockKey = req.sessionId!;
     if (!store.tryLockStart(lockKey)) {
-      return void res.status(409).json({ error: 'Ya se está iniciando una llamada.' });
+      return void res.status(409).json(errorBody(msg('call.starting')));
     }
 
     let call: CallRecord | undefined;
@@ -144,14 +145,14 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
           timeLimitSeconds: cfg.maxCallSeconds,
           ringTimeoutSeconds: cfg.ringTimeoutSeconds,
         });
-        store.update(call.id, { providerCallSid: result.sid, providerStatus: result.status }, 'Twilio aceptó la llamada.');
+        store.update(call.id, { providerCallSid: result.sid, providerStatus: result.status }, msg('log.accepted'));
       }
       res.status(201).json({ call: CallStore.toPublic(store.get(call.id)!) });
     } catch (err) {
-      const message = err instanceof ProviderError ? err.message : 'Error inesperado al iniciar la llamada.';
+      const m = err instanceof ProviderError ? err.msg : msg('call.unexpected');
       if (!(err instanceof ProviderError)) console.error(err);
-      if (call) store.update(call.id, { status: 'Error', error: message }, message);
-      res.status(502).json({ error: message, call: call ? CallStore.toPublic(store.get(call.id)!) : undefined });
+      if (call) store.update(call.id, { status: 'Error', ...errorPatch(m) }, m);
+      res.status(502).json(errorBody(m, { call: call ? CallStore.toPublic(store.get(call.id)!) : undefined }));
     } finally {
       store.unlockStart(lockKey);
     }
@@ -160,7 +161,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
   const ownCall = (req: Request, res: Response): CallRecord | undefined => {
     const call = store.get(String(req.params.id));
     if (!call || call.sessionId !== req.sessionId) {
-      res.status(404).json({ error: 'Llamada no encontrada (las transcripciones solo se conservan durante la sesión).' });
+      res.status(404).json(errorBody(msg('call.not_found')));
       return undefined;
     }
     return call;
@@ -175,21 +176,21 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     const call = ownCall(req, res);
     if (!call) return;
     if (isFinal(call.status)) return void res.json({ call: CallStore.toPublic(call) });
-    store.update(call.id, { hangupRequested: true }, 'Colgando…');
+    store.update(call.id, { hangupRequested: true }, msg('log.hanging_up'));
     try {
       if (call.simulated) {
         demo.hangup(call.id);
       } else if (call.providerCallSid) {
         await getProvider().hangup(call.providerCallSid, call.providerStatus);
-        store.update(call.id, { status: 'Finalizada' }, 'Llamada colgada por el usuario.');
+        store.update(call.id, { status: 'Finalizada' }, msg('log.hung_up'));
       } else {
-        store.update(call.id, { status: 'Finalizada' }, 'Llamada cancelada antes de conectar.');
+        store.update(call.id, { status: 'Finalizada' }, msg('log.cancelled_before_connect'));
       }
       res.json({ call: CallStore.toPublic(store.get(call.id)!) });
     } catch (err) {
-      const message = err instanceof ProviderError ? err.message : 'No se pudo colgar la llamada.';
-      store.update(call.id, {}, message);
-      res.status(502).json({ error: message, call: CallStore.toPublic(store.get(call.id)!) });
+      const m = err instanceof ProviderError ? err.msg : msg('call.hangup_failed');
+      store.update(call.id, {}, m);
+      res.status(502).json(errorBody(m, { call: CallStore.toPublic(store.get(call.id)!) }));
     }
   });
 
@@ -254,7 +255,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     store.update(
       call.id,
       { status: 'En llamada', providerStatus: 'in-progress', providerCallSid: call.providerCallSid ?? req.body?.CallSid ?? null, questionAttempts: 1 },
-      'Llamada contestada. Reproduciendo el mensaje.',
+      msg('log.answered'),
     );
     sendTwiml(res, answerTwiml(cfg, call.message, gatherUrl(call.id, 1)));
   });
@@ -271,7 +272,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
       return void sendTwiml(res, thanksTwiml(cfg));
     }
     if (attempt < MAX_QUESTION_ATTEMPTS) {
-      store.update(call.id, { questionAttempts: attempt + 1 }, 'No se detectó voz. Repitiendo la pregunta.');
+      store.update(call.id, { questionAttempts: attempt + 1 }, msg('log.repeating'));
       return void sendTwiml(res, repeatTwiml(cfg, call.message, gatherUrl(call.id, attempt + 1)));
     }
     store.recordNoAnswer(call.id);
@@ -284,19 +285,22 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
       const providerStatus = String(req.body?.CallStatus ?? '');
       const status = mapProviderStatus(providerStatus, call.hangupRequested);
       const duration = Number.parseInt(String(req.body?.CallDuration ?? ''), 10);
-      const errorText =
-        status === 'Error'
-          ? `La llamada falló (estado de Twilio: ${providerStatus || 'desconocido'}${req.body?.ErrorCode ? `, código ${req.body.ErrorCode}` : ''}).`
-          : null;
+      const shownStatus = providerStatus || '?';
+      const errorMsg =
+        status !== 'Error'
+          ? null
+          : req.body?.ErrorCode
+            ? msg('call.failed_code', { status: shownStatus, errorCode: String(req.body.ErrorCode) })
+            : msg('call.failed', { status: shownStatus });
       store.update(
         call.id,
         {
           providerStatus,
           status,
           ...(Number.isFinite(duration) ? { durationSeconds: duration } : {}),
-          ...(errorText ? { error: errorText } : {}),
+          ...(errorMsg ? errorPatch(errorMsg) : {}),
         },
-        `Estado de Twilio: ${providerStatus}`,
+        msg('log.provider_status', { status: providerStatus }),
       );
     }
     res.status(204).end();
@@ -312,7 +316,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error(err);
-    if (!res.headersSent) res.status(500).json({ error: 'Error interno del servidor.' });
+    if (!res.headersSent) res.status(500).json(errorBody(msg('server.internal')));
   });
 
   return { app, store, auth };

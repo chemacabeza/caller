@@ -1,17 +1,54 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, FINAL_STATUSES, watchCall, type Call, type ServerConfig, type UiStatus } from './api';
 import { usePreview } from './usePreview';
+import { I18nProvider, LANGS, Rich, useI18n, type Lang, type ServerMessage } from './i18n';
 
-export function App() {
+/** Turns any thrown value into a translatable message. */
+function toMessage(err: unknown): ServerMessage {
+  if (err instanceof ApiError) return { text: err.message, code: err.code, params: err.params };
+  return { text: err instanceof Error ? err.message : String(err) };
+}
+
+export function App({ initialLang }: { initialLang?: Lang } = {}) {
+  return (
+    <I18nProvider initial={initialLang}>
+      <Shell />
+    </I18nProvider>
+  );
+}
+
+function LanguageSwitch() {
+  const { lang, setLang, t } = useI18n();
+  return (
+    <div className="lang-switch" role="group" aria-label={t('lang.label')}>
+      {LANGS.map((l) => (
+        <button
+          key={l}
+          type="button"
+          lang={l}
+          className={l === lang ? 'active' : ''}
+          aria-pressed={l === lang}
+          title={t(`lang.${l}`)}
+          onClick={() => setLang(l)}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Shell() {
+  const { t, tm } = useI18n();
   const [auth, setAuth] = useState<'checking' | 'out' | 'in'>('checking');
-  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootError, setBootError] = useState<ServerMessage | null>(null);
 
   useEffect(() => {
     api
       .health()
       .then((h) => setAuth(h.authenticated ? 'in' : 'out'))
-      .catch((e: Error) => {
-        setBootError(e.message);
+      .catch((e) => {
+        setBootError(toMessage(e));
         setAuth('out');
       });
   }, []);
@@ -20,22 +57,25 @@ export function App() {
     <div className="page">
       <header className="header">
         <h1>
-          <span aria-hidden="true">📞</span> Llamadas en Español
+          <span aria-hidden="true">📞</span> {t('app.title')}
         </h1>
-        {auth === 'in' && (
-          <button
-            className="link"
-            onClick={async () => {
-              await api.logout().catch(() => undefined);
-              setAuth('out');
-            }}
-          >
-            Cerrar sesión
-          </button>
-        )}
+        <div className="header-actions">
+          <LanguageSwitch />
+          {auth === 'in' && (
+            <button
+              className="link"
+              onClick={async () => {
+                await api.logout().catch(() => undefined);
+                setAuth('out');
+              }}
+            >
+              {t('auth.logout')}
+            </button>
+          )}
+        </div>
       </header>
-      {bootError && <p className="alert error" role="alert">{bootError}</p>}
-      {auth === 'checking' && <p className="muted">Cargando…</p>}
+      {bootError && <p className="alert error" role="alert">{tm(bootError)}</p>}
+      {auth === 'checking' && <p className="muted">{t('common.loading')}</p>}
       {auth === 'out' && <Login onLoggedIn={() => { setBootError(null); setAuth('in'); }} />}
       {auth === 'in' && <Caller onUnauthorized={() => setAuth('out')} />}
     </div>
@@ -43,8 +83,9 @@ export function App() {
 }
 
 function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const { t, tm } = useI18n();
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ServerMessage | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -55,23 +96,24 @@ function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       await api.login(password);
       onLoggedIn();
     } catch (err) {
-      setError((err as Error).message);
+      setError(toMessage(err));
     } finally {
       setBusy(false);
     }
   };
 
+  const [before, after] = t('auth.help').split('{env}');
   return (
     <form className="card narrow" onSubmit={submit}>
-      <h2>Acceso</h2>
+      <h2>{t('auth.title')}</h2>
       <p className="muted">
-        Introduzca la contraseña definida en <code>APP_PASSWORD</code>. Si no la definió, la contraseña temporal aparece en la consola del servidor.
+        {before}<code>APP_PASSWORD</code>{after}
       </p>
-      <label htmlFor="password">Contraseña</label>
+      <label htmlFor="password">{t('auth.password')}</label>
       <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      {error && <p className="alert error" role="alert">{error}</p>}
+      {error && <p className="alert error" role="alert">{tm(error)}</p>}
       <button className="btn primary" disabled={busy || !password}>
-        {busy ? 'Entrando…' : 'Entrar'}
+        {busy ? t('auth.submitting') : t('auth.submit')}
       </button>
     </form>
   );
@@ -88,14 +130,16 @@ const STATUS_CLASS: Record<UiStatus, string> = {
 };
 
 function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const { t, tm, scenarioLabel, locale } = useI18n();
   const [config, setConfig] = useState<ServerConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<ServerMessage | null>(null);
+  // The call is always in Spanish, so the default message stays Spanish in both interface languages.
   const [number, setNumber] = useState('+34 955 74 88 35');
   const [message, setMessage] = useState('Buenos días, ¿a qué hora abren hoy, por favor?');
   const [demo, setDemo] = useState(true);
   const [scenario, setScenario] = useState('respuesta');
   const [call, setCall] = useState<Call | null>(null);
-  const [error, setError] = useState<{ text: string; field?: string } | null>(null);
+  const [error, setError] = useState<{ msg: ServerMessage; field?: string } | null>(null);
   const [starting, setStarting] = useState(false);
   const [hangingUp, setHangingUp] = useState(false);
   const startingRef = useRef(false); // synchronous guard against double clicks
@@ -105,7 +149,7 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
     (err: unknown) => {
       if (err instanceof ApiError && err.status === 401) return onUnauthorized();
       const field = err instanceof ApiError ? (err.body.field as string | undefined) : undefined;
-      setError({ text: err instanceof Error ? err.message : String(err), field });
+      setError({ msg: toMessage(err), field });
     },
     [onUnauthorized],
   );
@@ -119,14 +163,14 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) onUnauthorized();
-        else setConfigError((err as Error).message);
+        else setConfigError(toMessage(err));
       });
   }, [onUnauthorized]);
 
   const callId = call?.id;
   useEffect(() => {
     if (!callId) return;
-    return watchCall(callId, setCall, (msg) => setError({ text: msg }));
+    return watchCall(callId, setCall, (err) => setError({ msg: toMessage(err) }));
   }, [callId]);
 
   const active = call !== null && !FINAL_STATUSES.includes(call.status);
@@ -170,15 +214,17 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
     setError(null);
   };
 
+  const browserVoice = preview.voice ? `${preview.voice.name}, ${preview.voice.lang}` : t('preview.noSpanishVoice');
+
   return (
     <main className="layout">
       <section className="card" aria-labelledby="form-title">
-        <h2 id="form-title">Nueva llamada</h2>
+        <h2 id="form-title">{t('form.title')}</h2>
 
         <ConfigNotice config={config} error={configError} />
 
         <form onSubmit={startCall} noValidate>
-          <label htmlFor="number">Número de teléfono</label>
+          <label htmlFor="number">{t('form.number')}</label>
           <input
             id="number"
             type="tel"
@@ -190,20 +236,23 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
             aria-invalid={error?.field === 'to'}
             aria-describedby="number-help"
           />
-          <p id="number-help" className="help">Números de España (+34). Puede escribirlo con espacios.</p>
+          <p id="number-help" className="help">{t('form.numberHelp')}</p>
 
-          <label htmlFor="message">Mensaje que se reproducirá</label>
+          <label htmlFor="message">{t('form.message')}</label>
           <textarea
             id="message"
+            lang="es"
             rows={3}
             maxLength={maxLen}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             disabled={active || starting}
             aria-invalid={error?.field === 'message'}
+            aria-describedby="message-help"
           />
-          <p className="help">
-            {message.length}/{maxLen} caracteres · Voz telefónica: {config?.voice ?? '…'} ({config?.language ?? 'es-ES'})
+          <p id="message-help" className="help">
+            {t('form.messageHelp', { count: message.length, max: maxLen, voice: config?.voice ?? '…', language: config?.language ?? 'es-ES' })}
+            {t('form.callLanguageNote') && <><br />{t('form.callLanguageNote')}</>}
           </p>
 
           <div className="preview">
@@ -213,83 +262,83 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
               onClick={() => (preview.speaking ? preview.stop() : preview.play(message))}
               disabled={!preview.supported || !message.trim()}
             >
-              {preview.speaking ? '⏹ Detener' : '🔊 Escuchar mensaje'}
+              {preview.speaking ? t('preview.stop') : t('preview.play')}
             </button>
-            <span className="tag">Vista previa aproximada</span>
+            <span className="tag">{t('preview.tag')}</span>
             <p className="help">
               {preview.supported
-                ? `Se usa la voz del navegador (${preview.voice ? `${preview.voice.name}, ${preview.voice.lang}` : 'voz española no disponible'}). En la llamada sonará la voz ${config?.voice ?? 'de Twilio'}.`
-                : 'Su navegador no permite la vista previa de voz.'}
+                ? t('preview.voiceInfo', { browserVoice, callVoice: config?.voice ?? t('preview.twilioVoice') })
+                : t('preview.unsupported')}
             </p>
           </div>
 
           <fieldset className="mode" disabled={active || starting}>
-            <legend>Modo</legend>
+            <legend>{t('mode.legend')}</legend>
             <label className="check">
               <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} disabled={!config?.realCallsPossible} />
-              Modo demostración (simulado, no se realiza ninguna llamada)
+              {t('mode.demo')}
             </label>
             {demo && config && (
               <>
-                <label htmlFor="scenario">Escenario simulado</label>
+                <label htmlFor="scenario">{t('mode.scenario')}</label>
                 <select id="scenario" value={scenario} onChange={(e) => setScenario(e.target.value)}>
                   {Object.entries(config.demoScenarios).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
+                    <option key={k} value={k}>{scenarioLabel(k, v)}</option>
                   ))}
                 </select>
               </>
             )}
             {!demo && (
               <p className="alert real">
-                ⚠️ Se realizará una llamada <strong>real</strong> a <strong>{number}</strong>. Puede tener coste en su cuenta de Twilio.
+                <Rich text={t('mode.realWarning', { number })} />
               </p>
             )}
           </fieldset>
 
-          {error && <p className="alert error" role="alert">{error.text}</p>}
+          {error && <p className="alert error" role="alert">{tm(error.msg)}</p>}
 
           <div className="actions">
             <button type="submit" className="btn call" disabled={active || starting || !config || !message.trim() || !number.trim()}>
-              {starting ? 'Iniciando…' : demo ? '📞 Llamar (simulado)' : '📞 Llamar'}
+              {starting ? t('action.starting') : demo ? t('action.callDemo') : t('action.call')}
             </button>
             <button type="button" className="btn hangup" onClick={hangup} disabled={!active || hangingUp}>
-              {hangingUp ? 'Colgando…' : '✖ Colgar'}
+              {hangingUp ? t('action.hangingUp') : t('action.hangup')}
             </button>
           </div>
         </form>
       </section>
 
       <section className="card" aria-labelledby="status-title" aria-live="polite">
-        <h2 id="status-title">Estado de la llamada</h2>
+        <h2 id="status-title">{t('status.title')}</h2>
         <div className="status-row">
-          <span className={`status ${STATUS_CLASS[status]}`}>{status}</span>
-          {call?.simulated && <span className="tag sim">SIMULADO</span>}
+          <span className={`status ${STATUS_CLASS[status]}`} data-status={status}>{t(`call.status.${status}`)}</span>
+          {call?.simulated && <span className="tag sim">{t('status.simulated')}</span>}
           {call && !active && (
-            <button className="link" onClick={reset}>Nueva llamada</button>
+            <button className="link" onClick={reset}>{t('status.newCall')}</button>
           )}
         </div>
         {call && (
           <dl className="facts">
-            <dt>Destino</dt>
+            <dt>{t('facts.destination')}</dt>
             <dd>{call.toDisplay}</dd>
-            <dt>Respuesta</dt>
-            <dd>{answerLabel(call)}</dd>
-            {call.questionAttempts > 1 && (<><dt>Pregunta</dt><dd>Repetida una vez</dd></>)}
-            {call.durationSeconds !== null && (<><dt>Duración</dt><dd>{call.durationSeconds} s</dd></>)}
+            <dt>{t('facts.answer')}</dt>
+            <dd>{t(call.answerStatus === 'recibida' ? 'answer.received' : call.answerStatus === 'sin_respuesta' ? 'answer.none' : 'answer.pending')}</dd>
+            {call.questionAttempts > 1 && (<><dt>{t('facts.question')}</dt><dd>{t('facts.repeated')}</dd></>)}
+            {call.durationSeconds !== null && (<><dt>{t('facts.duration')}</dt><dd>{call.durationSeconds} s</dd></>)}
           </dl>
         )}
-        {call?.error && <p className="alert error">{call.error}</p>}
+        {call?.error && <p className="alert error">{tm({ text: call.error, code: call.errorCode, params: call.errorParams })}</p>}
 
-        <h2 className="transcript-title">Respuesta recibida</h2>
+        <h2 className="transcript-title">{t('transcript.title')}</h2>
         <Transcript call={call} />
 
         {call && call.log.length > 0 && (
           <details className="log">
-            <summary>Registro de la llamada</summary>
+            <summary>{t('log.title')}</summary>
             <ol>
               {call.log.map((l, i) => (
                 <li key={i}>
-                  <time>{new Date(l.at).toLocaleTimeString('es-ES')}</time> {l.text}
+                  <time>{new Date(l.at).toLocaleTimeString(locale)}</time> {tm(l)}
                 </li>
               ))}
             </ol>
@@ -300,57 +349,58 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
   );
 }
 
-function answerLabel(call: Call): string {
-  if (call.answerStatus === 'recibida') return 'Recibida';
-  if (call.answerStatus === 'sin_respuesta') return 'No se recibió una respuesta';
-  return 'Pendiente';
-}
-
 function Transcript({ call }: { call: Call | null }) {
-  if (!call) return <p className="transcript empty">Aquí aparecerá lo que diga la persona que conteste.</p>;
+  const { t, analysisSummary } = useI18n();
+  if (!call) return <p className="transcript empty">{t('transcript.empty')}</p>;
   if (call.answerStatus === 'recibida' && call.transcript) {
     return (
       <div className={`transcript${call.simulated ? ' simulated' : ''}`}>
-        {call.simulated && <p className="tag sim">Resultado simulado — no es una respuesta real</p>}
+        {call.simulated && <p className="tag sim">{t('transcript.simulated')}</p>}
+        {/* The recipient's actual words, always shown literally in Spanish. */}
         <blockquote lang="es">«{call.transcript}»</blockquote>
         <p className="help">
-          Transcripción automática literal{call.confidence !== null ? ` · confianza ${Math.round(call.confidence * 100)} %` : ''}.
+          {t('transcript.literal')}
+          {call.confidence !== null ? t('transcript.confidence', { pct: Math.round(call.confidence * 100) }) : ''}.
         </p>
-        {call.analysis && <p className="analysis">{call.analysis.summary}</p>}
+        {call.analysis && <p className="analysis">{analysisSummary(call.analysis)}</p>}
       </div>
     );
   }
   if (call.answerStatus === 'sin_respuesta') {
     return (
       <div className={`transcript${call.simulated ? ' simulated' : ''}`}>
-        {call.simulated && <p className="tag sim">Resultado simulado</p>}
-        <p className="no-answer">No se recibió una respuesta.</p>
+        {call.simulated && <p className="tag sim">{t('transcript.simulatedShort')}</p>}
+        <p className="no-answer">{t('transcript.noAnswer')}</p>
       </div>
     );
   }
-  return <p className="transcript empty">{call.status === 'En llamada' ? 'Escuchando la respuesta…' : 'Esperando…'}</p>;
+  return <p className="transcript empty">{call.status === 'En llamada' ? t('transcript.listening') : t('transcript.waiting')}</p>;
 }
 
-function ConfigNotice({ config, error }: { config: ServerConfig | null; error: string | null }) {
-  if (error) return <p className="alert error">{error}</p>;
+function ConfigNotice({ config, error }: { config: ServerConfig | null; error: ServerMessage | null }) {
+  const { t, tm } = useI18n();
+  if (error) return <p className="alert error">{tm(error)}</p>;
   if (!config) return null;
   if (config.realCallsPossible && config.problems.length === 0) return null;
+  const [before, after] = t('notice.missing').split('{vars}');
   return (
     <div className="alert info">
       {!config.realCallsPossible && (
         <>
           <p>
-            <strong>Las llamadas reales están desactivadas.</strong> Solo está disponible el modo demostración.
+            <Rich text={t('notice.disabled')} />
           </p>
           {config.missing.length > 0 && (
             <p>
-              Faltan estas variables de entorno en <code>server/.env</code>: {config.missing.map((m) => <code key={m}>{m} </code>)}. Consulte el README.
+              {before.replace('{file}', 'server/.env')}
+              {config.missing.map((m) => <code key={m}>{m} </code>)}
+              {after}
             </p>
           )}
         </>
       )}
       {config.problems.map((p) => (
-        <p key={p}>{p}</p>
+        <p key={p.code}>{tm(p)}</p>
       ))}
     </div>
   );

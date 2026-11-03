@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
+import { errorBody, msg } from './messages.js';
 
 export const COOKIE_NAME = 'llamadas_sid';
 const SESSION_HOURS = 12;
@@ -37,14 +38,14 @@ export class Auth {
     const ip = req.ip ?? 'unknown';
     const f = this.failures.get(ip);
     if (f && f.until > Date.now()) {
-      res.status(429).json({ error: 'Demasiados intentos. Espere un minuto e inténtelo de nuevo.' });
+      res.status(429).json(errorBody(msg('auth.throttled')));
       return;
     }
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!safeEqual(password, this.password)) {
       const count = (f?.count ?? 0) + 1;
       this.failures.set(ip, { count, until: count >= 5 ? Date.now() + 60_000 : 0 });
-      res.status(401).json({ error: 'Contraseña incorrecta.' });
+      res.status(401).json(errorBody(msg('auth.wrong_password')));
       return;
     }
     this.failures.delete(ip);
@@ -86,7 +87,7 @@ export class Auth {
   require = (req: Request, res: Response, next: NextFunction): void => {
     const id = this.sessionOf(req);
     if (!id) {
-      res.status(401).json({ error: 'Inicie sesión para continuar.' });
+      res.status(401).json(errorBody(msg('auth.required')));
       return;
     }
     req.sessionId = id;

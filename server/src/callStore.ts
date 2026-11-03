@@ -1,6 +1,15 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { analyzeAnswer, type AnswerAnalysis } from './answerAnalysis.js';
+import { msg, type MessageParams, type Msg } from './messages.js';
+
+/** A call-log line: Spanish text plus a code/params the client can translate. */
+export interface LogEntry {
+  at: string;
+  text: string;
+  code?: string;
+  params?: MessageParams;
+}
 
 /** Call progress as shown in the UI. "Preparado" is a client-only state. */
 export type CallStatus = 'Llamando' | 'En llamada' | 'Finalizada' | 'Ocupado' | 'Sin respuesta' | 'Error';
@@ -25,13 +34,16 @@ export interface CallRecord {
   analysis: AnswerAnalysis | null;
   /** How many times the question was asked (1 or 2). */
   questionAttempts: number;
+  /** Spanish error text, plus code/params for translation. */
   error: string | null;
+  errorCode: string | null;
+  errorParams: MessageParams | null;
   hangupRequested: boolean;
   createdAt: string;
   updatedAt: string;
   endedAt: string | null;
   durationSeconds: number | null;
-  log: { at: string; text: string }[];
+  log: LogEntry[];
 }
 
 export type PublicCall = Omit<CallRecord, 'sessionId' | 'hangupRequested'>;
@@ -89,12 +101,14 @@ export class CallStore {
       analysis: null,
       questionAttempts: 0,
       error: null,
+      errorCode: null,
+      errorParams: null,
       hangupRequested: false,
       createdAt: now,
       updatedAt: now,
       endedAt: null,
       durationSeconds: null,
-      log: [{ at: now, text: input.simulated ? 'Llamada simulada creada.' : 'Solicitando llamada a Twilio…' }],
+      log: [toLogEntry(now, msg(input.simulated ? 'log.demo_created' : 'log.requesting'))],
     };
     this.calls.set(call.id, call);
     this.emit(call);
@@ -120,7 +134,7 @@ export class CallStore {
     this.pendingStart.delete(key);
   }
 
-  update(id: string, patch: Partial<CallRecord>, logText?: string): CallRecord | undefined {
+  update(id: string, patch: Partial<CallRecord>, logMsg?: Msg | string): CallRecord | undefined {
     const call = this.calls.get(id);
     if (!call) return undefined;
     // Once a call is final, its status must not move back (Twilio callbacks may arrive out of order).
@@ -133,7 +147,7 @@ export class CallStore {
       if (call.answerStatus === 'pendiente') call.answerStatus = 'sin_respuesta';
       this.scheduleCleanup(call.id);
     }
-    if (logText) call.log.push({ at: call.updatedAt, text: logText });
+    if (logMsg) call.log.push(toLogEntry(call.updatedAt, logMsg));
     this.emit(call);
     return call;
   }
@@ -142,7 +156,7 @@ export class CallStore {
     return this.update(
       id,
       { transcript, confidence, answerStatus: 'recibida', analysis: analyzeAnswer(transcript) },
-      'Respuesta recibida.',
+      msg('log.answer_received'),
     );
   }
 
@@ -150,7 +164,7 @@ export class CallStore {
     return this.update(
       id,
       { answerStatus: 'sin_respuesta', analysis: analyzeAnswer('') },
-      'No se recibió una respuesta.',
+      msg('log.no_answer'),
     );
   }
 
@@ -178,4 +192,14 @@ export class CallStore {
   private scheduleCleanup(id: string) {
     setTimeout(() => this.calls.delete(id), this.ttlMinutes * 60_000).unref();
   }
+}
+
+function toLogEntry(at: string, m: Msg | string): LogEntry {
+  if (typeof m === 'string') return { at, text: m };
+  return { at, text: m.text, code: m.code, ...(m.params ? { params: m.params } : {}) };
+}
+
+/** Patch that sets a call's error from a translatable message. */
+export function errorPatch(m: Msg): Pick<CallRecord, 'error' | 'errorCode' | 'errorParams'> {
+  return { error: m.text, errorCode: m.code, errorParams: m.params ?? null };
 }

@@ -119,7 +119,7 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
 - The call-control API requires a password login: an HttpOnly, `SameSite=Strict` session cookie, plus a JSON-only rule as CSRF defence, and brute-force throttling.
 - Every Twilio webhook is checked against `X-Twilio-Signature` using the Auth Token and `PUBLIC_BASE_URL`. Invalid signatures get 403. Callbacks whose `CallSid` doesn’t match the call are ignored.
 - **Duplicate calls are prevented:** only one call can be active at a time (409 otherwise), with a lock covering the creation window. The *Llamar* button also disables itself synchronously.
-- Phone numbers are normalized and validated server-side (Spain only). Premium-rate prefixes (803, 806, 807, 905, 907) are refused.
+- Phone numbers are normalized and validated server-side. Supported destinations: **Spain (+34)** and **China (+86)**: mobiles such as `+86 133 3115 7888` and landlines with an area code. Chinese numbers must include `+86`/`0086`, because 9 digits without a country code are treated as Spanish. Spanish premium-rate prefixes (803, 806, 807, 905, 907) are refused. Calls to China also need **China** enabled in Twilio Geo permissions, and they cost noticeably more per minute than calls within Spain.
 - Recording is disabled (`record: false`, no `<Record>`). Transcripts are held **in memory only**, visible only to the session that made the call, and deleted after `TRANSCRIPT_TTL_MINUTES`, on logout, or on restart.
 
 ## Demo mode

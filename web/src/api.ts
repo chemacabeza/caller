@@ -18,17 +18,19 @@ export interface Call {
   analysis: { timesMentioned: string[]; mentionsClosed: boolean; summary: string } | null;
   questionAttempts: number;
   error: string | null;
+  errorCode: string | null;
+  errorParams: Record<string, string | number> | null;
   createdAt: string;
   updatedAt: string;
   endedAt: string | null;
   durationSeconds: number | null;
-  log: { at: string; text: string }[];
+  log: { at: string; text: string; code?: string; params?: Record<string, string | number> }[];
 }
 
 export interface ServerConfig {
   realCallsPossible: boolean;
   missing: string[];
-  problems: string[];
+  problems: { code: string; text: string }[];
   voice: string;
   language: string;
   fromNumberConfigured: boolean;
@@ -42,8 +44,13 @@ export interface ServerConfig {
 export const FINAL_STATUSES: CallStatus[] = ['Finalizada', 'Ocupado', 'Sin respuesta', 'Error'];
 
 export class ApiError extends Error {
+  /** Stable message code (server/src/messages.ts, or client.*) for translation. */
+  code: string | null;
+  params: Record<string, string | number> | null;
   constructor(message: string, public status: number, public body: Record<string, unknown> = {}) {
     super(message);
+    this.code = typeof body.code === 'string' ? body.code : null;
+    this.params = (body.params as Record<string, string | number> | undefined) ?? null;
   }
 }
 
@@ -57,10 +64,13 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError('No se puede contactar con el servidor. ¿Está en marcha el backend (npm run dev)?', 0);
+    throw new ApiError('No se puede contactar con el servidor. ¿Está en marcha el backend (npm run dev)?', 0, { code: 'client.unreachable' });
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error ?? `Error ${res.status}`, res.status, data);
+  if (!res.ok) {
+    if (!data.error) Object.assign(data, { code: 'client.httpError', params: { status: res.status } });
+    throw new ApiError(data.error ?? `Error ${res.status}`, res.status, data);
+  }
   return data as T;
 }
 
@@ -79,7 +89,7 @@ export const api = {
  * Follows a call via server-sent events, falling back to polling if SSE fails.
  * Returns an unsubscribe function.
  */
-export function watchCall(id: string, onUpdate: (call: Call) => void, onError: (msg: string) => void): () => void {
+export function watchCall(id: string, onUpdate: (call: Call) => void, onError: (err: unknown) => void): () => void {
   let stopped = false;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let es: EventSource | undefined;
@@ -91,7 +101,7 @@ export function watchCall(id: string, onUpdate: (call: Call) => void, onError: (
       onUpdate(call);
       if (FINAL_STATUSES.includes(call.status)) return;
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
+      onError(err);
     }
     pollTimer = setTimeout(poll, 2000);
   };

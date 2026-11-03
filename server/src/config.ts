@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { msg, type Msg } from './messages.js';
 
 export interface AppConfig {
   port: number;
@@ -85,23 +86,23 @@ export function missingTwilioConfig(cfg: AppConfig): string[] {
   return missing;
 }
 
-/** Human-readable (Spanish) problems with the configuration that are not just "missing". */
-export function configProblems(cfg: AppConfig): string[] {
-  const problems: string[] = [];
+/** Translatable problems with the configuration that are not just "missing". */
+export function configProblems(cfg: AppConfig): Msg[] {
+  const problems: Msg[] = [];
   if (cfg.publicBaseUrl && !cfg.publicBaseUrl.startsWith('https://')) {
-    problems.push('PUBLIC_BASE_URL debe empezar por https:// (Twilio necesita una URL pública HTTPS).');
+    problems.push(msg('problem.public_url_https'));
   }
   if (cfg.publicBaseUrl && /localhost|127\.0\.0\.1/.test(cfg.publicBaseUrl)) {
-    problems.push('PUBLIC_BASE_URL apunta a localhost; Twilio no puede alcanzarla. Use un túnel HTTPS (ngrok, cloudflared).');
+    problems.push(msg('problem.public_url_localhost'));
   }
   if (cfg.twilioAccountSid && !/^AC[0-9a-fA-F]{32}$/.test(cfg.twilioAccountSid)) {
-    problems.push('TWILIO_ACCOUNT_SID no tiene el formato esperado (AC seguido de 32 caracteres hexadecimales).');
+    problems.push(msg('problem.sid_format'));
   }
   if (cfg.twilioFromNumber && !/^\+[1-9]\d{6,14}$/.test(cfg.twilioFromNumber)) {
-    problems.push('TWILIO_FROM_NUMBER debe estar en formato E.164, por ejemplo +34600000000.');
+    problems.push(msg('problem.from_format'));
   }
   if (!cfg.validateTwilioSignature) {
-    problems.push('La validación de firmas de Twilio está desactivada (TWILIO_VALIDATE_SIGNATURE=false). No lo use con un túnel público.');
+    problems.push(msg('problem.signature_disabled'));
   }
   return problems;
 }

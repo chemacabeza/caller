@@ -16,5 +16,5 @@ app.listen(cfg.port, () => {
   } else {
     console.log(`Webhooks de Twilio: ${cfg.publicBaseUrl}/twilio/{voice,gather,status}/:id`);
   }
-  for (const p of configProblems(cfg)) console.warn(`Aviso: ${p}`);
+  for (const p of configProblems(cfg)) console.warn(`Aviso: ${p.text}`);
 });

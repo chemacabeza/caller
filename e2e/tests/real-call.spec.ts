@@ -222,6 +222,26 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
     expect(twiml.match(/<Hangup\/>/g)).toBeNull();
   });
 
+  test('calls a Chinese mobile (+86) in E.164, still speaking Spanish', async ({ realPage: page, request }) => {
+    await page.getByLabel('Número de teléfono').fill('+86 133 3115 7888');
+    await expect(page.locator('.alert.real')).toContainText('+86 133 3115 7888');
+    const call = await startRealCall(page, request);
+    expect(call.to).toBe('+8613331157888');
+    expect(call.from).toBe(E2E.fromNumber);
+    expect(call.timeLimitSeconds).toBe(120);
+    await expect(page.locator('.facts')).toContainText('+86 133 3115 7888');
+    const twiml = await (await twilioWebhook(request, pathOf(call.answerUrl), { CallSid: call.sid })).text();
+    expect(twiml).toContain('language="es-ES"');
+    expect(twiml).toContain(E2E.defaultMessage);
+  });
+
+  test('normalizes Chinese landlines with the optional (0) trunk prefix', async ({ realPage: page, request }) => {
+    await page.getByLabel('Número de teléfono').fill('0086 (0)10 1234-5678');
+    const call = await startRealCall(page, request);
+    expect(call.to).toBe('+861012345678');
+    await expect(page.locator('.facts')).toContainText('+86 10 1234 5678');
+  });
+
   test('refuses the caller ID itself as destination', async ({ realPage: page, request }) => {
     await page.getByLabel('Número de teléfono').fill('+34 600 111 222');
     await page.getByRole('button', { name: '📞 Llamar', exact: true }).click();

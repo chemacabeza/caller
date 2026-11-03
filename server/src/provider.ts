@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import type { AppConfig } from './config.js';
+import { MESSAGES, msg, type MessageCode, type Msg } from './messages.js';
 
 export interface CreateCallParams {
   to: string;
@@ -18,8 +19,8 @@ export interface VoiceProvider {
 }
 
 export class ProviderError extends Error {
-  constructor(message: string, public code?: number, public httpStatus?: number) {
-    super(message);
+  constructor(public msg: Msg, public code?: number, public httpStatus?: number) {
+    super(msg.text);
   }
 }
 
@@ -69,20 +70,7 @@ export function createTwilioProvider(cfg: AppConfig): VoiceProvider {
 export function toProviderError(err: unknown): ProviderError {
   const e = err as { code?: number; status?: number; message?: string };
   const code = e?.code;
-  const known: Record<number, string> = {
-    20003: 'Twilio rechazó las credenciales. Revise TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN.',
-    21210: 'TWILIO_FROM_NUMBER no es un número de Twilio ni un identificador de llamada verificado en su cuenta.',
-    21211: 'Twilio considera que el número de destino no es válido.',
-    21212: 'TWILIO_FROM_NUMBER no es válido.',
-    21214: 'Twilio no puede llamar a este número de destino.',
-    21215: 'Las llamadas a este destino no están habilitadas. Active España en Voice > Settings > Geo permissions.',
-    21216: 'Este número de destino está bloqueado por Twilio.',
-    21219: 'Con una cuenta de prueba solo puede llamar a números verificados. Verifique el número de destino o actualice la cuenta.',
-    21217: 'Twilio considera que el número de destino no es válido.',
-    21220: 'No se pudo colgar: la llamada ya no está activa.',
-    13227: 'Las llamadas a este país no están habilitadas en los permisos geográficos de Twilio.',
-    20404: 'Twilio no encuentra el recurso solicitado (¿la llamada ya terminó?).',
-  };
-  const message = (code && known[code]) || `Error del proveedor de telefonía: ${e?.message ?? String(err)}`;
-  return new ProviderError(message, code, e?.status);
+  const key = `provider.${code}` as MessageCode;
+  const m = code && key in MESSAGES ? msg(key) : msg('provider.unknown', { message: e?.message ?? String(err) });
+  return new ProviderError(m, code, e?.status);
 }

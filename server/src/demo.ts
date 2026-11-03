@@ -1,4 +1,5 @@
 import type { CallStore } from './callStore.js';
+import { msg } from './messages.js';
 
 /**
  * Demo mode: drives a call record through the same states a real call would go
@@ -33,23 +34,23 @@ export class DemoSimulator {
     const at = (n: number, fn: () => void) => steps.push([n * this.stepMs, fn]);
     const s = this.store;
 
-    at(0.5, () => s.update(callId, { providerStatus: 'ringing', status: 'Llamando' }, '[SIMULADO] Sonando…'));
+    at(0.5, () => s.update(callId, { providerStatus: 'ringing', status: 'Llamando' }, msg('log.demo_ringing')));
 
     if (scenario === 'ocupado') {
-      at(2, () => s.update(callId, { providerStatus: 'busy', status: 'Ocupado' }, '[SIMULADO] La línea está ocupada.'));
+      at(2, () => s.update(callId, { providerStatus: 'busy', status: 'Ocupado' }, msg('log.demo_busy')));
     } else if (scenario === 'sin_respuesta') {
-      at(4, () => s.update(callId, { providerStatus: 'no-answer', status: 'Sin respuesta' }, '[SIMULADO] Nadie contestó.'));
+      at(4, () => s.update(callId, { providerStatus: 'no-answer', status: 'Sin respuesta' }, msg('log.demo_no_answer')));
     } else {
-      at(2, () => s.update(callId, { providerStatus: 'in-progress', status: 'En llamada', questionAttempts: 1 }, '[SIMULADO] Llamada contestada. Reproduciendo el mensaje.'));
+      at(2, () => s.update(callId, { providerStatus: 'in-progress', status: 'En llamada', questionAttempts: 1 }, msg('log.demo_answered')));
       if (scenario === 'silencio') {
-        at(5, () => s.update(callId, { questionAttempts: 2 }, '[SIMULADO] No se detectó voz. Repitiendo la pregunta.'));
+        at(5, () => s.update(callId, { questionAttempts: 2 }, msg('log.demo_repeating')));
         at(8, () => s.recordNoAnswer(callId));
       } else {
         at(5, () => s.recordAnswer(callId, SIMULATED_ANSWERS[scenario], 0.9));
-        at(6, () => s.update(callId, {}, '[SIMULADO] Diciendo: «Muchas gracias. Que tenga un buen día.»'));
+        at(6, () => s.update(callId, {}, msg('log.demo_thanks')));
       }
       const end = scenario === 'silencio' ? 9 : 7;
-      at(end, () => s.update(callId, { providerStatus: 'completed', status: 'Finalizada', durationSeconds: Math.round((end - 2) * this.stepMs / 1000) }, '[SIMULADO] Llamada finalizada.'));
+      at(end, () => s.update(callId, { providerStatus: 'completed', status: 'Finalizada', durationSeconds: Math.round((end - 2) * this.stepMs / 1000) }, msg('log.demo_ended')));
     }
 
     this.timers.set(callId, steps.map(([ms, fn]) => setTimeout(fn, ms)));
@@ -58,6 +59,6 @@ export class DemoSimulator {
   hangup(callId: string) {
     for (const t of this.timers.get(callId) ?? []) clearTimeout(t);
     this.timers.delete(callId);
-    this.store.update(callId, { providerStatus: 'completed', status: 'Finalizada' }, '[SIMULADO] Llamada colgada por el usuario.');
+    this.store.update(callId, { providerStatus: 'completed', status: 'Finalizada' }, msg('log.demo_hung_up'));
   }
 }
