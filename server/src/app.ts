@@ -5,7 +5,7 @@ import twilio from 'twilio';
 import { configProblems, missingTwilioConfig, type AppConfig } from './config.js';
 import { normalizePhoneNumber } from './phone.js';
 import { CallStore, errorPatch, isFinal, mapProviderStatus, type CallRecord } from './callStore.js';
-import { errorBody, msg } from './messages.js';
+import { errorBody, msg, type Msg } from './messages.js';
 import { createTwilioProvider, ProviderError, type VoiceProvider } from './provider.js';
 import { answerTwiml, giveUpTwiml, hangupTwiml, MAX_QUESTION_ATTEMPTS, repeatTwiml, thanksTwiml } from './twiml.js';
 import { DEMO_SCENARIOS, DemoSimulator, isDemoScenario } from './demo.js';
@@ -19,6 +19,11 @@ export interface AppDeps {
   /** Injected in tests; defaults to the real Twilio REST client. */
   provider?: VoiceProvider;
   demoStepMs?: number;
+}
+
+/** "+34", "+86", "+1"… from an E.164 number of a supported country. */
+function countryPrefix(e164: string): string {
+  return ['+1', '+33', '+34', '+39', '+49', '+86'].find((p) => e164.startsWith(p)) ?? e164.slice(0, 3);
 }
 
 export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
@@ -151,10 +156,19 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
       }
       res.status(201).json({ call: CallStore.toPublic(store.get(call.id)!) });
     } catch (err) {
-      const m = err instanceof ProviderError ? err.msg : msg('call.unexpected');
-      if (!(err instanceof ProviderError)) console.error(err);
+      let m: Msg = err instanceof ProviderError ? err.msg : msg('call.unexpected');
+      if (err instanceof ProviderError) {
+        // Keep Twilio's exact reason in the server log for diagnosis.
+        console.warn(`Twilio rechazó la llamada a ${phone.e164}: código ${err.code ?? '?'} (HTTP ${err.httpStatus ?? '?'}): ${err.providerMessage ?? err.message}`);
+        if (m.code === 'provider.21215' || m.code === 'provider.21216' || m.code === 'provider.13227') {
+          m = msg(m.code, { prefix: countryPrefix(phone.e164) });
+        }
+      } else {
+        console.error(err);
+      }
       if (call) store.update(call.id, { status: 'Error', ...errorPatch(m) }, m);
-      res.status(502).json(errorBody(m, { call: call ? CallStore.toPublic(store.get(call.id)!) : undefined }));
+      // 422 (not 502): proxies and tunnels pass 4xx bodies through untouched, so the reason reaches the user.
+      res.status(422).json(errorBody(m, { call: call ? CallStore.toPublic(store.get(call.id)!) : undefined }));
     } finally {
       store.unlockStart(lockKey);
     }
@@ -191,8 +205,9 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
       res.json({ call: CallStore.toPublic(store.get(call.id)!) });
     } catch (err) {
       const m = err instanceof ProviderError ? err.msg : msg('call.hangup_failed');
+      if (err instanceof ProviderError) console.warn(`Twilio no pudo colgar ${call.providerCallSid}: código ${err.code ?? '?'}: ${err.providerMessage ?? err.message}`);
       store.update(call.id, {}, m);
-      res.status(502).json(errorBody(m, { call: CallStore.toPublic(store.get(call.id)!) }));
+      res.status(422).json(errorBody(m, { call: CallStore.toPublic(store.get(call.id)!) }));
     }
   });
 

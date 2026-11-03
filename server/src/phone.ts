@@ -1,7 +1,7 @@
 import { msg, type Msg } from './messages.js';
 
-/** ES = Spain, FR = France, DE = Germany, CN = China, NANP = North American Numbering Plan (+1: USA, Canada…). */
-export type Country = 'ES' | 'FR' | 'DE' | 'CN' | 'NANP';
+/** ES = Spain, FR = France, DE = Germany, IT = Italy, CN = China, NANP = North American Numbering Plan (+1: USA, Canada…). */
+export type Country = 'ES' | 'FR' | 'DE' | 'IT' | 'CN' | 'NANP';
 
 export type PhoneResult =
   | { ok: true; e164: string; display: string; country: Country }
@@ -14,7 +14,7 @@ const ES_PREMIUM_PREFIXES = ['803', '806', '807', '905', '907'];
 
 /**
  * Normalizes a phone number to E.164. Supported destinations: Spain (+34), France (+33),
- * Germany (+49), China (+86) and the USA/Canada (+1).
+ * Germany (+49), Italy (+39), China (+86) and the USA/Canada (+1).
  *
  * Spain: "+34 955 74 88 35", "0034 955-748-835", "955748835" (9 digits without a
  *        country code are assumed to be Spanish), "(+34) 955.74.88.35".
@@ -23,6 +23,7 @@ const ES_PREMIUM_PREFIXES = ['803', '806', '807', '905', '907'];
  * +1:    "+1-707-555-0123", "001 (707) 555 0123". A country code is required.
  * +33:   "+33 6 39 98 12 34", "+33 (0)6 39 98 12 34", "0033 639981234". A country code is required.
  * +49:   "+491711234567", "+49 (0)171 1234567", "0049 30 1234567". A country code is required.
+ * +39:   "+39 312 345 6789" (mobile), "+39 06 1234 5678" (landline: the 0 is kept). A country code is required.
  */
 export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (typeof input !== 'string' || !input.trim()) {
@@ -33,7 +34,9 @@ export function normalizePhoneNumber(input: unknown): PhoneResult {
     return fail(msg('phone.chars'));
   }
   // "(0)" is a common way to show the optional domestic trunk prefix, e.g. "+86 (0)10 …".
-  let digits = raw.replace(/\(0\)/g, '').replace(/[\s\-().]/g, '');
+  // In Italy the leading 0 of landlines is part of the international number, so keep it there.
+  const isItaly = /^(\+|00)39/.test(raw.replace(/[\s\-.()]/g, ''));
+  let digits = (isItaly ? raw.replace(/\((0)\)/g, '$1') : raw.replace(/\(0\)/g, '')).replace(/[\s\-().]/g, '');
   if (digits.indexOf('+') > 0 || (digits.match(/\+/g) ?? []).length > 1) {
     return fail(msg('phone.plus'));
   }
@@ -48,6 +51,7 @@ export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (digits.startsWith('34')) return spain(digits.slice(2));
   if (digits.startsWith('33')) return france(digits.slice(2));
   if (digits.startsWith('49')) return germany(digits.slice(2));
+  if (digits.startsWith('39')) return italy(digits.slice(2));
   if (digits.startsWith('86')) return china(digits.slice(2));
   if (digits.startsWith('1')) return nanp(digits.slice(1));
   return fail(msg('phone.unsupported_country'));
@@ -143,4 +147,29 @@ function germany(nationalInput: string): PhoneResult {
     return ok(national);
   }
   return fail(msg('phone.de_invalid'));
+}
+
+/** Italian premium/special-rate prefixes: 89x premium, 16x/14x/178/199 special services. */
+const IT_PREMIUM_PREFIXES = ['89', '16', '14', '178', '199'];
+
+function italy(national: string): PhoneResult {
+  const ok = (display: string): PhoneResult => ({ ok: true, country: 'IT', e164: `+39${national}`, display: `+39 ${display}` });
+  if (IT_PREMIUM_PREFIXES.some((p) => national.startsWith(p))) {
+    return fail(msg('phone.it_premium'));
+  }
+  // Mobile: 3XX + 6–7 digits (9–10 digits in total).
+  if (/^3\d{8,9}$/.test(national)) {
+    return ok(`${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`);
+  }
+  // Landline: starts with 0 (kept in international format), 6–11 digits in total.
+  if (/^0\d{5,10}$/.test(national)) {
+    return ok(national.startsWith('06') || national.startsWith('02')
+      ? `${national.slice(0, 2)} ${national.slice(2, 6)} ${national.slice(6)}`.trim()
+      : national);
+  }
+  // Freephone 800 / 803 + 6 digits.
+  if (/^80[03]\d{6}$/.test(national)) {
+    return ok(`${national.slice(0, 3)} ${national.slice(3)}`);
+  }
+  return fail(msg('phone.it_invalid'));
 }

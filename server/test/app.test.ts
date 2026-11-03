@@ -142,10 +142,32 @@ describe('starting a real call (mocked Twilio)', () => {
     expect(provider.createCall).toHaveBeenCalledTimes(1);
   });
 
+  it('explains geo-permission rejections with the destination prefix, and logs Twilio\'s reason', async () => {
+    const { agent, provider } = await setup();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    provider.createCall.mockRejectedValueOnce(toProviderError({ code: 21215, status: 400, message: 'Account not allowed to call +8613800138000' }));
+    const res = await agent.post('/api/calls').send({ to: '+86 138 0013 8000', message: 'Hola' }).expect(422);
+    expect(res.body).toMatchObject({ code: 'provider.21215', params: { prefix: '+86' } });
+    expect(res.body.error).toContain('(+86)');
+    expect(res.body.error).toContain('China');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('código 21215 (HTTP 400): Account not allowed to call'));
+    warn.mockRestore();
+  });
+
+  it('explains Twilio account blocks (21216) with the destination prefix', async () => {
+    const { agent, provider } = await setup();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    provider.createCall.mockRejectedValueOnce(toProviderError({ code: 21216, status: 400, message: 'Account not allowed to call +8613800138000' }));
+    const res = await agent.post('/api/calls').send({ to: '+86 138 0013 8000', message: 'Hola' }).expect(422);
+    expect(res.body).toMatchObject({ code: 'provider.21216', params: { prefix: '+86' } });
+    expect(res.body.error).toBe('Twilio no permite que su cuenta llame a este destino (+86). No se puede activar desde la configuración: solicítelo al soporte de Twilio o use otro proveedor.');
+    vi.restoreAllMocks();
+  });
+
   it('shows clear provider errors', async () => {
     const { agent, provider } = await setup();
     provider.createCall.mockRejectedValueOnce(toProviderError({ code: 21219, message: 'unverified' }));
-    const res = await agent.post('/api/calls').send({ to: '+34955748835', message: 'Hola' }).expect(502);
+    const res = await agent.post('/api/calls').send({ to: '+34955748835', message: 'Hola' }).expect(422);
     expect(res.body.error).toContain('cuenta de prueba');
     expect(res.body.call.status).toBe('Error');
     // A failed call must not block the next attempt.

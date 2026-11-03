@@ -2,7 +2,7 @@ import { test, expect, stubSpeechSynthesis, login, DEMO_URL, E2E } from '../supp
 
 test.describe('Formulario de llamada', () => {
   test('the help text names both supported countries', async ({ demoPage: page }) => {
-    await expect(page.getByText('Números de España (+34), Francia (+33), Alemania (+49), China (+86) o EE. UU./Canadá (+1).')).toBeVisible();
+    await expect(page.getByText('Números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) o EE. UU./Canadá (+1).')).toBeVisible();
   });
 
   test('is prefilled with the requested number and message, both editable', async ({ demoPage: page }) => {
@@ -58,12 +58,13 @@ test.describe('Formulario de llamada', () => {
   });
 
   for (const [input, error] of [
-    ['+44 20 7946 0958', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), China (+86) y EE. UU./Canadá (+1).'],
+    ['+44 20 7946 0958', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1).'],
     ['+86 138 0013 800', 'Número chino no válido'],
     ['+1 900 555 0123', 'No se permiten números de tarificación especial de EE. UU.'],
     ['+33 891 12 34 56', 'No se permiten números franceses de tarificación especial'],
     ['+49 900 1234567', 'No se permiten números alemanes de tarificación especial'],
-    ['13800138000', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), China (+86) y EE. UU./Canadá (+1).'],
+    ['+39 899 123 456', 'No se permiten números italianos de tarificación especial'],
+    ['13800138000', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1).'],
     ['+34 955 74', 'Un número español debe tener 9 dígitos'],
     ['+34 806 12 34 56', 'tarificación especial'],
     ['955-abc-835', 'El número solo puede contener'],
@@ -84,6 +85,8 @@ test.describe('Formulario de llamada', () => {
     ['+33 (0)6 39 98 12 34', '+33 6 39 98 12 34'],
     ['+491711234567', '+49 171 1234567'],
     ['0049 (0)171 123 4567', '+49 171 1234567'],
+    ['+39 312 345 6789', '+39 312 345 6789'],
+    ['+39 (0)6 1234 5678', '+39 06 1234 5678'],
   ] as const) {
     test(`accepts ${input} and shows it as ${display}`, async ({ demoPage: page }) => {
       await page.getByLabel('Número de teléfono').fill(input);

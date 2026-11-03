@@ -319,6 +319,9 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
                 <Rich text={t('mode.realWarning', { number })} />
               </p>
             )}
+            {!demo && /^(\+|00)86/.test(number.replace(/[\s\-().]/g, '')) && (
+              <p className="alert real" data-testid="china-warning">{t('mode.chinaWarning')}</p>
+            )}
           </fieldset>
 
           {error && <p className="alert error" role="alert">{tm(error.msg)}</p>}

@@ -69,7 +69,11 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (!data.error) Object.assign(data, { code: 'client.httpError', params: { status: res.status } });
+    // A 5xx without our JSON body comes from a proxy/tunnel (app restarting or unreachable), not from the app.
+    if (!data.error) {
+      const gateway = res.status === 502 || res.status === 503 || res.status === 504 || res.status >= 520;
+      Object.assign(data, { code: gateway ? 'client.gateway' : 'client.httpError', params: { status: res.status } });
+    }
     throw new ApiError(data.error ?? `Error ${res.status}`, res.status, data);
   }
   return data as T;

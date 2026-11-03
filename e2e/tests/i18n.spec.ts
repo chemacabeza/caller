@@ -91,7 +91,7 @@ test.describe('Idioma / Language (ES · EN)', () => {
     await page.getByRole('button', { name: 'EN', exact: true }).click();
     await page.getByLabel('Phone number').fill('+44 20 7946 0958');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
-    await expect(page.getByRole('alert')).toHaveText('Only Spanish (+34), French (+33), German (+49), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
+    await expect(page.getByRole('alert')).toHaveText('Only Spanish (+34), French (+33), German (+49), Italian (+39), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
     await page.getByLabel('Phone number').fill('+86 138 0013 800');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
     await expect(page.getByRole('alert')).toHaveText('Invalid Chinese number: use an 11-digit mobile starting with 1 (e.g. +86 138 0013 8000) or a landline with its area code.');
@@ -105,7 +105,7 @@ test.describe('Idioma / Language (ES · EN)', () => {
     await expect(page.locator('.alert.real')).toContainText('A real call will be made to +34 955 74 88 35. It may be charged to your Twilio account.');
     await request.post(`${REAL_URL}/__e2e/twilio/fail-next`, { data: { code: 21215, message: 'geo' } });
     await page.getByRole('button', { name: '📞 Call', exact: true }).click();
-    await expect(page.getByRole('alert')).toHaveText('Calls to this destination are not enabled. Enable Spain under Voice > Settings > Geo permissions.');
+    await expect(page.getByRole('alert')).toHaveText('Your Twilio account cannot call this destination (+34). Enable it under Voice > Settings > Geo permissions; if the country is not listed (e.g. China), contact Twilio support.');
     await expect(page.locator('.status')).toHaveText('Error');
 
     await page.getByRole('button', { name: '📞 Call', exact: true }).click();

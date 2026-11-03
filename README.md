@@ -64,7 +64,7 @@ Open http://localhost:5173 in development, or http://localhost:3001 after `npm r
 | `TWILIO_FROM_NUMBER` | for real calls | A Twilio number you own, or a verified caller ID, in E.164. Must differ from the destination. `TWILIO_PHONE_NUMBER` is accepted as an alias. |
 | `PUBLIC_BASE_URL` | for real calls | Public **HTTPS** URL forwarding to port 3001, no trailing slash |
 | `TUNNEL_PUBLIC_BASE_URL` | no | Set automatically by `./start.sh --cloudflare`; overrides `PUBLIC_BASE_URL` |
-| `DEFAULT_DESTINATION_NUMBER` | no | Number pre-filled in the form (Spain, France, Germany, China, or USA/Canada), default `+34 955 74 88 35`. Still editable in the UI. |
+| `DEFAULT_DESTINATION_NUMBER` | no | Number pre-filled in the form (Spain, France, Germany, Italy, China, or USA/Canada), default `+34 955 74 88 35`. Still editable in the UI. |
 | `SAVED_NUMBERS` | no | Comma-separated numbers shown as one-tap buttons under the phone field, e.g. `+86 138 0013 8000, +1-707-555-0123, +33 6 39 98 12 34, +491711234567` |
 | `TTS_VOICE` | no | Default `Polly.Lucia-Neural`. Other es-ES voices: `Polly.Sergio-Neural`, `Polly.Lucia-Generative` / `Polly.Sergio-Generative` (public beta), `Polly.Conchita`, `Polly.Enrique` |
 | `TTS_RATE` | no | SSML prosody rate for Polly voices, default `95%`; empty disables |
@@ -125,6 +125,7 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
   - **Spain (+34):** 9 digits without a country code are treated as Spanish. Premium prefixes 803, 806, 807, 905, and 907 are refused.
   - **France (+33):** e.g. `+33 6 39 98 12 34`. `+33`/`0033` is required. 08 special-rate numbers are refused, except 080 freephone.
   - **Germany (+49):** mobiles such as `+49 171 1234567`, landlines, and 0800. `+49`/`0049` is required. 0900, 0137, 0118, and 0180 numbers are refused.
+  - **Italy (+39):** mobiles such as `+39 312 345 6789`, landlines that keep their leading 0 (`+39 06 1234 5678`), and 800/803. `+39`/`0039` is required. 89x, 16x, 14x, 178, and 199 numbers are refused.
   - **China (+86):** mobiles such as `+86 138 0013 8000`, and landlines with an area code. `+86`/`0086` is required.
   - **USA/Canada (+1):** e.g. `+1-707-555-0123`. `+1`/`001` is required. Premium 900/976 numbers are refused.
 

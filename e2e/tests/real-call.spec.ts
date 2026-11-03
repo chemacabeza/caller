@@ -187,7 +187,7 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
 
   for (const [code, text] of [
     [21219, 'Con una cuenta de prueba solo puede llamar a números verificados'],
-    [21215, 'Active España en Voice > Settings > Geo permissions'],
+    [21215, 'Su cuenta de Twilio no permite llamar a este destino (+34). Actívelo en Voice > Settings > Geo permissions'],
     [20003, 'Twilio rechazó las credenciales'],
     [21210, 'TWILIO_FROM_NUMBER no es un número de Twilio'],
     [99999, 'Error del proveedor de telefonía: algo raro'],
@@ -224,7 +224,7 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
 
   test('calls a Chinese mobile (+86) in E.164, still speaking Spanish', async ({ realPage: page, request }) => {
     await page.getByLabel('Número de teléfono').fill('+86 138 0013 8000');
-    await expect(page.locator('.alert.real')).toContainText('+86 138 0013 8000');
+    await expect(page.locator('.alert.real').first()).toContainText('+86 138 0013 8000');
     const call = await startRealCall(page, request);
     expect(call.to).toBe('+8613800138000');
     expect(call.from).toBe(E2E.fromNumber);
@@ -239,6 +239,8 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
     ['+1-707-555-0123', '+17075550123', '+1 707 555 0123'],
     ['+33 6 39 98 12 34', '+33639981234', '+33 6 39 98 12 34'],
     ['+491711234567', '+491711234567', '+49 171 1234567'],
+    ['+39 312 345 6789', '+393123456789', '+39 312 345 6789'],
+    ['+39 06 1234 5678', '+390612345678', '+39 06 1234 5678'],
   ] as const) {
     test(`calls ${input} in E.164 (${e164})`, async ({ realPage: page, request }) => {
       await page.getByLabel('Número de teléfono').fill(input);
@@ -249,6 +251,28 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
       expect(twiml).toContain('language="es-ES"');
     });
   }
+
+  test('warns that Twilio may not allow China, and shows Twilio\'s rejection with the +86 prefix', async ({ realPage: page, request }) => {
+    await page.getByLabel('Número de teléfono').fill('+86 138 0013 8000');
+    await expect(page.getByTestId('china-warning')).toContainText('es posible que su cuenta de Twilio no permita llamar a China');
+    await page.getByLabel(/Modo demostración/).check();
+    await expect(page.getByTestId('china-warning')).toHaveCount(0);
+    await page.getByLabel(/Modo demostración/).uncheck();
+    await request.post(`${REAL_URL}/__e2e/twilio/fail-next`, { data: { code: 21215, message: 'not allowed' } });
+    await page.getByRole('button', { name: '📞 Llamar', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'Su cuenta de Twilio no permite llamar a este destino (+86). Actívelo en Voice > Settings > Geo permissions; si el país no aparece en la lista (p. ej. China), consulte con el soporte de Twilio.',
+    );
+    await expect(page.locator('.status')).toHaveText('Error');
+  });
+
+  test('a bare 502 from the tunnel is explained instead of showing "Error 502"', async ({ realPage: page }) => {
+    await page.route('**/api/calls', (route) => route.fulfill({ status: 502, contentType: 'text/html', body: '<html>Bad gateway</html>' }));
+    await page.getByRole('button', { name: '📞 Llamar', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'No se pudo contactar con la aplicación a través del túnel (HTTP 502). Puede que se esté reiniciando: espere unos segundos y vuelva a intentarlo.',
+    );
+  });
 
   test('normalizes Chinese landlines with the optional (0) trunk prefix', async ({ realPage: page, request }) => {
     await page.getByLabel('Número de teléfono').fill('0086 (0)10 1234-5678');

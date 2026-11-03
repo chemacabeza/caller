@@ -57,7 +57,7 @@ describe('normalizePhoneNumber — China (+86)', () => {
 
   it('without + or 00, only Spanish numbers are accepted', () => {
     expect(normalizePhoneNumber('34955748835')).toMatchObject({ ok: true, e164: '+34955748835' });
-    for (const bare of ['17075550123', '33639981234', '8613800138000', '491711234567']) {
+    for (const bare of ['17075550123', '33639981234', '8613800138000', '491711234567', '393123456789', '0612345678']) {
       const r = normalizePhoneNumber(bare);
       expect(r.ok, bare).toBe(false);
       if (!r.ok) expect(r.msg.code).toBe('phone.unsupported_country');
@@ -156,12 +156,44 @@ describe('normalizePhoneNumber — Germany (+49)', () => {
   });
 });
 
+describe('normalizePhoneNumber — Italy (+39)', () => {
+  it.each([
+    ['+39 312 345 6789', '+393123456789', '+39 312 345 6789'], // mobile, 10 digits
+    ['+393123456789', '+393123456789', '+39 312 345 6789'],
+    ['0039 312-345-678', '+39312345678', '+39 312 345 678'], // mobile, 9 digits
+    ['+39 06 1234 5678', '+390612345678', '+39 06 1234 5678'], // Rome: the 0 is kept
+    ['+39 (0)6 1234 5678', '+390612345678', '+39 06 1234 5678'],
+    ['+39 02 1234 5678', '+390212345678', '+39 02 1234 5678'], // Milan
+    ['+39 055 123456', '+39055123456', '+39 055123456'], // Florence
+    ['+39 800 123 456', '+39800123456', '+39 800 123456'], // freephone
+  ])('normalizes %s', (input, e164, display) => {
+    expect(normalizePhoneNumber(input)).toMatchObject({ ok: true, e164, display, country: 'IT' });
+  });
+
+  it.each([
+    ['+39 312 34', 'phone.it_invalid'],
+    ['+39 312 345 67890', 'phone.it_invalid'],
+    ['+39 6 1234 5678', 'phone.it_invalid'], // landline without its 0
+    ['+39 899 123 456', 'phone.it_premium'],
+    ['+39 166 123 456', 'phone.it_premium'],
+    ['+39 199 123 456', 'phone.it_premium'],
+  ])('rejects %s', (input, code) => {
+    const r = normalizePhoneNumber(input);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.msg.code).toBe(code);
+  });
+
+  it('still strips "(0)" for other countries', () => {
+    expect(normalizePhoneNumber('+33 (0)6 39 98 12 34')).toMatchObject({ ok: true, e164: '+33639981234' });
+  });
+});
+
 describe('normalizePhoneNumber — general', () => {
   it.each([
     ['', 'phone.empty'],
     ['+44 20 7946 0958', 'phone.unsupported_country'],
     ['+44 20 7946 0959', 'phone.unsupported_country'],
-    ['+39 06 1234 5678', 'phone.unsupported_country'],
+    ['+351 21 123 4567', 'phone.unsupported_country'], // Portugal
     ['955abc', 'phone.chars'],
     ['34+955748835', 'phone.plus'],
   ])('rejects %s', (input, code) => {

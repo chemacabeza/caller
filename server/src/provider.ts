@@ -19,7 +19,7 @@ export interface VoiceProvider {
 }
 
 export class ProviderError extends Error {
-  constructor(public msg: Msg, public code?: number, public httpStatus?: number) {
+  constructor(public msg: Msg, public code?: number, public httpStatus?: number, public providerMessage?: string) {
     super(msg.text);
   }
 }
@@ -72,5 +72,5 @@ export function toProviderError(err: unknown): ProviderError {
   const code = e?.code;
   const key = `provider.${code}` as MessageCode;
   const m = code && key in MESSAGES ? msg(key) : msg('provider.unknown', { message: e?.message ?? String(err) });
-  return new ProviderError(m, code, e?.status);
+  return new ProviderError(m, code, e?.status, e?.message);
 }
