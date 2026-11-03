@@ -91,10 +91,10 @@ test.describe('Idioma / Language (ES · EN)', () => {
     await page.getByRole('button', { name: 'EN', exact: true }).click();
     await page.getByLabel('Phone number').fill('+44 20 7946 0958');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
-    await expect(page.getByRole('alert')).toHaveText('Only Spanish (+34) and Chinese (+86) numbers are supported for now. Chinese numbers must include +86.');
-    await page.getByLabel('Phone number').fill('+86 133 3115 788');
+    await expect(page.getByRole('alert')).toHaveText('Only Spanish (+34), French (+33), German (+49), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
+    await page.getByLabel('Phone number').fill('+86 138 0013 800');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
-    await expect(page.getByRole('alert')).toHaveText('Invalid Chinese number: use an 11-digit mobile starting with 1 (e.g. +86 133 3115 7888) or a landline with its area code.');
+    await expect(page.getByRole('alert')).toHaveText('Invalid Chinese number: use an 11-digit mobile starting with 1 (e.g. +86 138 0013 8000) or a landline with its area code.');
     await page.getByLabel('Phone number').fill('+34 806 12 34 56');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
     await expect(page.getByRole('alert')).toHaveText('Premium-rate numbers (803, 806, 807, 905, 907) are not allowed.');

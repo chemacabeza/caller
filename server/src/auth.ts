@@ -41,7 +41,8 @@ export class Auth {
       res.status(429).json(errorBody(msg('auth.throttled')));
       return;
     }
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    // Ignore surrounding whitespace (e.g. a space picked up when copying the password).
+    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
     if (!safeEqual(password, this.password)) {
       const count = (f?.count ?? 0) + 1;
       this.failures.set(ip, { count, until: count >= 5 ? Date.now() + 60_000 : 0 });

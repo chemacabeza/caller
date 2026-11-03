@@ -8,8 +8,14 @@ export const MESSAGES = {
   'phone.empty': 'Introduzca un número de teléfono.',
   'phone.chars': 'El número solo puede contener dígitos, espacios, guiones, puntos, paréntesis y el signo +.',
   'phone.plus': 'El signo + solo puede aparecer al principio del número.',
-  'phone.unsupported_country': 'Por ahora solo se admiten números de España (+34) y China (+86). Los números chinos deben incluir +86.',
-  'phone.cn_invalid': 'Número chino no válido: use un móvil de 11 dígitos que empiece por 1 (p. ej. +86 133 3115 7888) o un fijo con su prefijo de zona.',
+  'phone.unsupported_country': 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), China (+86) y EE. UU./Canadá (+1). Salvo los españoles, deben incluir el prefijo del país.',
+  'phone.de_invalid': 'Número alemán no válido: use +49 seguido del móvil (p. ej. +49 171 1234567) o del prefijo de zona y el número.',
+  'phone.de_premium': 'No se permiten números alemanes de tarificación especial (0900, 0137, 0118, 0180).',
+  'phone.fr_invalid': 'Número francés no válido: use +33 seguido de 9 dígitos (p. ej. +33 6 39 98 12 34).',
+  'phone.fr_premium': 'No se permiten números franceses de tarificación especial (08, salvo 080).',
+  'phone.nanp_invalid': 'Número de EE. UU./Canadá no válido: use +1 seguido de 10 dígitos (p. ej. +1 707 555 0123).',
+  'phone.nanp_premium': 'No se permiten números de tarificación especial de EE. UU. (900, 976).',
+  'phone.cn_invalid': 'Número chino no válido: use un móvil de 11 dígitos que empiece por 1 (p. ej. +86 138 0013 8000) o un fijo con su prefijo de zona.',
   'phone.length': 'Un número español debe tener 9 dígitos después de +34 y empezar por 5, 6, 7, 8 o 9.',
   'phone.premium': 'No se permiten números de tarificación especial (803, 806, 807, 905, 907).',
 
@@ -38,6 +44,8 @@ export const MESSAGES = {
   'problem.public_url_localhost': 'PUBLIC_BASE_URL apunta a localhost; Twilio no puede alcanzarla. Use un túnel HTTPS (ngrok, cloudflared).',
   'problem.sid_format': 'TWILIO_ACCOUNT_SID no tiene el formato esperado (AC seguido de 32 caracteres hexadecimales).',
   'problem.from_format': 'TWILIO_FROM_NUMBER debe estar en formato E.164, por ejemplo +34600000000.',
+  'problem.default_destination_invalid': 'DEFAULT_DESTINATION_NUMBER no es un número admitido (España +34, Francia +33, Alemania +49, China +86 o EE. UU./Canadá +1); se usa el número por defecto.',
+  'problem.saved_numbers_invalid': 'Se han ignorado números no admitidos en SAVED_NUMBERS: {numbers}.',
   'problem.signature_disabled': 'La validación de firmas de Twilio está desactivada (TWILIO_VALIDATE_SIGNATURE=false). No lo use con un túnel público.',
 
   // Twilio REST errors

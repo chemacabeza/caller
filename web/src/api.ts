@@ -30,7 +30,7 @@ export interface Call {
 export interface ServerConfig {
   realCallsPossible: boolean;
   missing: string[];
-  problems: { code: string; text: string }[];
+  problems: { code: string; text: string; params?: Record<string, string | number> }[];
   voice: string;
   language: string;
   fromNumberConfigured: boolean;
@@ -38,6 +38,7 @@ export interface ServerConfig {
   maxCallSeconds: number;
   maxMessageLength: number;
   defaults: { number: string; message: string };
+  savedNumbers?: string[];
   demoScenarios: Record<string, string>;
 }
 

@@ -223,17 +223,32 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
   });
 
   test('calls a Chinese mobile (+86) in E.164, still speaking Spanish', async ({ realPage: page, request }) => {
-    await page.getByLabel('Número de teléfono').fill('+86 133 3115 7888');
-    await expect(page.locator('.alert.real')).toContainText('+86 133 3115 7888');
+    await page.getByLabel('Número de teléfono').fill('+86 138 0013 8000');
+    await expect(page.locator('.alert.real')).toContainText('+86 138 0013 8000');
     const call = await startRealCall(page, request);
-    expect(call.to).toBe('+8613331157888');
+    expect(call.to).toBe('+8613800138000');
     expect(call.from).toBe(E2E.fromNumber);
     expect(call.timeLimitSeconds).toBe(120);
-    await expect(page.locator('.facts')).toContainText('+86 133 3115 7888');
+    await expect(page.locator('.facts')).toContainText('+86 138 0013 8000');
     const twiml = await (await twilioWebhook(request, pathOf(call.answerUrl), { CallSid: call.sid })).text();
     expect(twiml).toContain('language="es-ES"');
     expect(twiml).toContain(E2E.defaultMessage);
   });
+
+  for (const [input, e164, display] of [
+    ['+1-707-555-0123', '+17075550123', '+1 707 555 0123'],
+    ['+33 6 39 98 12 34', '+33639981234', '+33 6 39 98 12 34'],
+    ['+491711234567', '+491711234567', '+49 171 1234567'],
+  ] as const) {
+    test(`calls ${input} in E.164 (${e164})`, async ({ realPage: page, request }) => {
+      await page.getByLabel('Número de teléfono').fill(input);
+      const call = await startRealCall(page, request);
+      expect(call.to).toBe(e164);
+      await expect(page.locator('.facts')).toContainText(display);
+      const twiml = await (await twilioWebhook(request, pathOf(call.answerUrl), { CallSid: call.sid })).text();
+      expect(twiml).toContain('language="es-ES"');
+    });
+  }
 
   test('normalizes Chinese landlines with the optional (0) trunk prefix', async ({ realPage: page, request }) => {
     await page.getByLabel('Número de teléfono').fill('0086 (0)10 1234-5678');

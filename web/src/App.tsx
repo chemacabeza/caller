@@ -135,6 +135,7 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [configError, setConfigError] = useState<ServerMessage | null>(null);
   // The call is always in Spanish, so the default message stays Spanish in both interface languages.
   const [number, setNumber] = useState('+34 955 74 88 35');
+  const numberEdited = useRef(false);
   const [message, setMessage] = useState('Buenos días, ¿a qué hora abren hoy, por favor?');
   const [demo, setDemo] = useState(true);
   const [scenario, setScenario] = useState('respuesta');
@@ -160,6 +161,8 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
       .then((c) => {
         setConfig(c);
         setDemo(!c.realCallsPossible);
+        // Pre-fill the server's DEFAULT_DESTINATION_NUMBER unless the user already typed one.
+        if (!numberEdited.current && c.defaults?.number) setNumber(c.defaults.number);
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) onUnauthorized();
@@ -231,12 +234,35 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
             inputMode="tel"
             autoComplete="off"
             value={number}
-            onChange={(e) => setNumber(e.target.value)}
+            onChange={(e) => {
+              numberEdited.current = true;
+              setNumber(e.target.value);
+            }}
             disabled={active || starting}
             aria-invalid={error?.field === 'to'}
             aria-describedby="number-help"
           />
           <p id="number-help" className="help">{t('form.numberHelp')}</p>
+          {config?.savedNumbers && config.savedNumbers.length > 0 && (
+            <div className="saved-numbers" role="group" aria-label={t('form.savedNumbers')}>
+              <span className="help">{t('form.savedNumbers')}:</span>
+              {config.savedNumbers.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`chip${n === number ? ' active' : ''}`}
+                  aria-pressed={n === number}
+                  disabled={active || starting}
+                  onClick={() => {
+                    numberEdited.current = true;
+                    setNumber(n);
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
 
           <label htmlFor="message">{t('form.message')}</label>
           <textarea

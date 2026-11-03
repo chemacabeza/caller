@@ -68,7 +68,7 @@ describe('language switch', () => {
         if (url === '/api/health') return json({ ok: true, authenticated: true });
         if (url === '/api/config') return json(config);
         if (url === '/api/calls' && init?.method === 'POST') {
-          return json({ error: 'Por ahora solo se admiten números de España (+34) y China (+86). Los números chinos deben incluir +86.', code: 'phone.unsupported_country', field: 'to' }, 400);
+          return json({ error: 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), China (+86) y EE. UU./Canadá (+1). Salvo los españoles, deben incluir el prefijo del país.', code: 'phone.unsupported_country', field: 'to' }, 400);
         }
         return json({}, 404);
       }),
@@ -118,8 +118,8 @@ describe('language switch', () => {
     await user.clear(screen.getByLabelText('Phone number'));
     await user.type(screen.getByLabelText('Phone number'), '+44 20 7946 0958');
     await user.click(button);
-    expect((await screen.findByRole('alert')).textContent).toBe('Only Spanish (+34) and Chinese (+86) numbers are supported for now. Chinese numbers must include +86.');
+    expect((await screen.findByRole('alert')).textContent).toBe('Only Spanish (+34), French (+33), German (+49), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
     await user.click(screen.getByRole('button', { name: 'ES' }));
-    expect(screen.getByRole('alert').textContent).toBe('Por ahora solo se admiten números de España (+34) y China (+86). Los números chinos deben incluir +86.');
+    expect(screen.getByRole('alert').textContent).toBe('Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), China (+86) y EE. UU./Canadá (+1). Salvo los españoles, deben incluir el prefijo del país.');
   });
 });

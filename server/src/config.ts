@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { msg, type Msg } from './messages.js';
+import { normalizePhoneNumber } from './phone.js';
+
+export const FALLBACK_DESTINATION = '+34 955 74 88 35';
 
 export interface AppConfig {
   port: number;
@@ -27,6 +30,14 @@ export interface AppConfig {
   /** Seconds the phone may ring before Twilio gives up. */
   ringTimeoutSeconds: number;
   thanksMessage: string;
+  /** Number pre-filled in the form (display format). Set with DEFAULT_DESTINATION_NUMBER. */
+  defaultDestination: string;
+  /** DEFAULT_DESTINATION_NUMBER was set but is not a supported number. */
+  defaultDestinationInvalid: boolean;
+  /** Quick-pick numbers shown under the phone field (display format). Set with SAVED_NUMBERS. */
+  savedNumbers: string[];
+  /** Entries of SAVED_NUMBERS that were not supported numbers. */
+  savedNumbersInvalid: string[];
   /** Password protecting the call-control API. */
   appPassword: string;
   appPasswordGenerated: boolean;
@@ -67,6 +78,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxCallSeconds: int(env.MAX_CALL_SECONDS, 120, 30, 120),
     ringTimeoutSeconds: int(env.RING_TIMEOUT_SECONDS, 30, 5, 60),
     thanksMessage: 'Muchas gracias. Que tenga un buen día.',
+    ...defaultDestination(env.DEFAULT_DESTINATION_NUMBER),
+    ...savedNumbers(env.SAVED_NUMBERS),
     appPassword: env.APP_PASSWORD || randomBytes(9).toString('base64url'),
     appPasswordGenerated: generated,
     transcriptTtlMinutes: int(env.TRANSCRIPT_TTL_MINUTES, 60, 1, 24 * 60),
@@ -74,6 +87,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     staticDir: env.STATIC_DIR ?? new URL('../../web/dist', import.meta.url).pathname,
     cookieSecure: env.COOKIE_SECURE === 'true',
   };
+}
+
+function defaultDestination(value: string | undefined): Pick<AppConfig, 'defaultDestination' | 'defaultDestinationInvalid'> {
+  if (!value?.trim()) return { defaultDestination: FALLBACK_DESTINATION, defaultDestinationInvalid: false };
+  const r = normalizePhoneNumber(value);
+  return r.ok
+    ? { defaultDestination: r.display, defaultDestinationInvalid: false }
+    : { defaultDestination: FALLBACK_DESTINATION, defaultDestinationInvalid: true };
+}
+
+/** SAVED_NUMBERS: comma- or semicolon-separated list, e.g. "+86 138 0013 8000, +1-707-555-0123". */
+function savedNumbers(value: string | undefined): Pick<AppConfig, 'savedNumbers' | 'savedNumbersInvalid'> {
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const entry of (value ?? '').split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
+    const r = normalizePhoneNumber(entry);
+    if (!r.ok) invalid.push(entry);
+    else if (!valid.includes(r.display)) valid.push(r.display);
+  }
+  return { savedNumbers: valid, savedNumbersInvalid: invalid };
 }
 
 /** Names of environment variables that must be set before real calls are possible. */
@@ -100,6 +133,12 @@ export function configProblems(cfg: AppConfig): Msg[] {
   }
   if (cfg.twilioFromNumber && !/^\+[1-9]\d{6,14}$/.test(cfg.twilioFromNumber)) {
     problems.push(msg('problem.from_format'));
+  }
+  if (cfg.savedNumbersInvalid.length) {
+    problems.push(msg('problem.saved_numbers_invalid', { numbers: cfg.savedNumbersInvalid.join(', ') }));
+  }
+  if (cfg.defaultDestinationInvalid) {
+    problems.push(msg('problem.default_destination_invalid'));
   }
   if (!cfg.validateTwilioSignature) {
     problems.push(msg('problem.signature_disabled'));

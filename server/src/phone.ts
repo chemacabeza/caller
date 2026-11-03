@@ -1,6 +1,7 @@
 import { msg, type Msg } from './messages.js';
 
-export type Country = 'ES' | 'CN';
+/** ES = Spain, FR = France, DE = Germany, CN = China, NANP = North American Numbering Plan (+1: USA, Canada…). */
+export type Country = 'ES' | 'FR' | 'DE' | 'CN' | 'NANP';
 
 export type PhoneResult =
   | { ok: true; e164: string; display: string; country: Country }
@@ -12,12 +13,16 @@ const fail = (m: Msg): PhoneResult => ({ ok: false, error: m.text, msg: m });
 const ES_PREMIUM_PREFIXES = ['803', '806', '807', '905', '907'];
 
 /**
- * Normalizes a phone number to E.164. Supported destinations: Spain (+34) and China (+86).
+ * Normalizes a phone number to E.164. Supported destinations: Spain (+34), France (+33),
+ * Germany (+49), China (+86) and the USA/Canada (+1).
  *
  * Spain: "+34 955 74 88 35", "0034 955-748-835", "955748835" (9 digits without a
  *        country code are assumed to be Spanish), "(+34) 955.74.88.35".
- * China: "+86 133 3115 7888", "0086 13331157888", "+86 (0)10 1234 5678".
+ * China: "+86 138 0013 8000", "0086 13800138000", "+86 (0)10 1234 5678".
  *        A country code is required for Chinese numbers.
+ * +1:    "+1-707-555-0123", "001 (707) 555 0123". A country code is required.
+ * +33:   "+33 6 39 98 12 34", "+33 (0)6 39 98 12 34", "0033 639981234". A country code is required.
+ * +49:   "+491711234567", "+49 (0)171 1234567", "0049 30 1234567". A country code is required.
  */
 export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (typeof input !== 'string' || !input.trim()) {
@@ -36,9 +41,15 @@ export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (digits.startsWith('+')) digits = digits.slice(1);
   else if (digits.startsWith('00')) digits = digits.slice(2);
   else if (digits.length === 9) digits = `34${digits}`;
+  // Without "+" or "00", only Spanish numbers are accepted (9 digits, or 34 + 9 digits);
+  // anything else would be ambiguous (e.g. a Chinese mobile 133… vs. a +1 number).
+  else if (!(digits.length === 11 && digits.startsWith('34'))) return fail(msg('phone.unsupported_country'));
 
   if (digits.startsWith('34')) return spain(digits.slice(2));
+  if (digits.startsWith('33')) return france(digits.slice(2));
+  if (digits.startsWith('49')) return germany(digits.slice(2));
   if (digits.startsWith('86')) return china(digits.slice(2));
+  if (digits.startsWith('1')) return nanp(digits.slice(1));
   return fail(msg('phone.unsupported_country'));
 }
 
@@ -77,4 +88,59 @@ function china(nationalInput: string): PhoneResult {
     return ok(`${national.slice(0, 3)} ${grouped}`);
   }
   return fail(msg('phone.cn_invalid'));
+}
+
+function nanp(national: string): PhoneResult {
+  // NXX-NXX-XXXX: area code and exchange start with 2–9; N11 codes (211, 911…) are services, not numbers.
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(national) || /^[2-9]11/.test(national) || /^\d{3}[2-9]11/.test(national)) {
+    return fail(msg('phone.nanp_invalid'));
+  }
+  if (national.startsWith('900') || national.slice(3, 6) === '976') {
+    return fail(msg('phone.nanp_premium'));
+  }
+  return {
+    ok: true,
+    country: 'NANP',
+    e164: `+1${national}`,
+    display: `+1 ${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}`,
+  };
+}
+
+function france(nationalInput: string): PhoneResult {
+  // Drop the domestic trunk prefix if it was written after +33 (e.g. +33 07 …).
+  const national = nationalInput.replace(/^0/, '');
+  if (!/^[1-9]\d{8}$/.test(national)) {
+    return fail(msg('phone.fr_invalid'));
+  }
+  // 08 numbers are special-rate services, except 080 (freephone).
+  if (national.startsWith('8') && !national.startsWith('80')) {
+    return fail(msg('phone.fr_premium'));
+  }
+  const pairs = national.slice(1).match(/\d{2}/g)!.join(' ');
+  return { ok: true, country: 'FR', e164: `+33${national}`, display: `+33 ${national[0]} ${pairs}` };
+}
+
+/** German premium/special-rate prefixes (after +49): 0900 premium, 0137 mass calls, 0118 directory, 0180 shared cost. */
+const DE_PREMIUM_PREFIXES = ['900', '137', '118', '180'];
+
+function germany(nationalInput: string): PhoneResult {
+  const national = nationalInput.replace(/^0/, '');
+  if (DE_PREMIUM_PREFIXES.some((p) => national.startsWith(p))) {
+    return fail(msg('phone.de_premium'));
+  }
+  const ok = (display: string): PhoneResult => ({ ok: true, country: 'DE', e164: `+49${national}`, display: `+49 ${display}` });
+  // Mobile: 015x/016x/017x — 10 or 11 digits without the leading 0.
+  if (/^1[5-7]\d{8,9}$/.test(national)) {
+    return ok(`${national.slice(0, 3)} ${national.slice(3)}`);
+  }
+  // Freephone 0800 + 7 digits.
+  if (/^800\d{7}$/.test(national)) {
+    return ok(`800 ${national.slice(3)}`);
+  }
+  // Landline: area code (2–5 digits, starting 2–9) + subscriber number; 6–11 digits in total.
+  // Area-code lengths vary, so the number is shown without guessing where the area code ends.
+  if (/^[2-9]\d{5,10}$/.test(national)) {
+    return ok(national);
+  }
+  return fail(msg('phone.de_invalid'));
 }

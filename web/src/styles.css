@@ -131,3 +131,20 @@ code { background: #eef2f0; padding: 0.05rem 0.3rem; border-radius: 4px; font-si
 }
 .lang-switch button.active { background: var(--primary); color: #fff; }
 @media (max-width: 480px) { .header { flex-wrap: wrap; } .header h1 { font-size: 1.35rem; } }
+
+.saved-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.saved-numbers .help { margin: 0; }
+.chip {
+  font: inherit;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.9rem;
+  border-radius: 999px;
+  border: 2px solid var(--primary);
+  background: #fff;
+  color: var(--primary);
+  cursor: pointer;
+}
+.chip.active { background: var(--primary); color: #fff; }
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }

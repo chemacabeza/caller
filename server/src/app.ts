@@ -12,7 +12,6 @@ import { DEMO_SCENARIOS, DemoSimulator, isDemoScenario } from './demo.js';
 import { Auth } from './auth.js';
 
 export const MAX_MESSAGE_LENGTH = 500;
-export const DEFAULT_NUMBER = '+34 955 74 88 35';
 export const DEFAULT_MESSAGE = 'Buenos días, ¿a qué hora abren hoy, por favor?';
 
 export interface AppDeps {
@@ -25,7 +24,9 @@ export interface AppDeps {
 export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback');
+  // Trust X-Forwarded-For from local proxies only (Vite, the cloudflared/ngrok containers on the
+  // Docker network), so login throttling counts each visitor separately behind a tunnel.
+  app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']);
 
   const store = new CallStore(cfg.transcriptTtlMinutes);
   const demo = new DemoSimulator(store, demoStepMs);
@@ -74,14 +75,15 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     res.json({
       realCallsPossible,
       missing,
-      problems: configProblems(cfg).map(({ code, text }) => ({ code, text })),
+      problems: configProblems(cfg).map(({ code, text, params }) => ({ code, text, ...(params ? { params } : {}) })),
       voice: cfg.ttsVoice,
       language: cfg.ttsLanguage,
       fromNumberConfigured: Boolean(cfg.twilioFromNumber),
       greetingPauseSeconds: cfg.greetingPauseSeconds,
       maxCallSeconds: cfg.maxCallSeconds,
       maxMessageLength: MAX_MESSAGE_LENGTH,
-      defaults: { number: DEFAULT_NUMBER, message: DEFAULT_MESSAGE },
+      defaults: { number: cfg.defaultDestination, message: DEFAULT_MESSAGE },
+      savedNumbers: cfg.savedNumbers,
       demoScenarios: DEMO_SCENARIOS,
     });
   });

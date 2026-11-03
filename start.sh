@@ -75,16 +75,25 @@ fi
 
 if $CLOUDFLARE; then
   # Start a fresh quick tunnel first: its random URL must be known before the app starts.
-  docker compose --profile cloudflare up -d --force-recreate --no-deps cloudflared
-  echo -n "Esperando la URL del túnel de Cloudflare"
-  for _ in $(seq 1 60); do
-    TUNNEL_PUBLIC_BASE_URL="$(docker compose --profile cloudflare logs cloudflared 2>/dev/null \
-      | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1 || true)"
+  # Creating a quick tunnel occasionally fails on Cloudflare's side, so retry a few times.
+  TUNNEL_PUBLIC_BASE_URL=""
+  for attempt in 1 2 3; do
+    docker compose --profile cloudflare up -d --force-recreate --no-deps cloudflared
+    echo -n "Esperando la URL del túnel de Cloudflare (intento $attempt/3)"
+    for _ in $(seq 1 60); do
+      logs="$(docker compose --profile cloudflare logs cloudflared 2>/dev/null || true)"
+      # api.trycloudflare.com is Cloudflare's API (it appears in error messages), not our tunnel.
+      TUNNEL_PUBLIC_BASE_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' <<<"$logs" | grep -v '^https://api\.' | tail -n1 || true)"
+      [[ -n "$TUNNEL_PUBLIC_BASE_URL" ]] && break
+      grep -q 'failed to request quick Tunnel' <<<"$logs" && break
+      echo -n "."
+      sleep 1
+    done
+    echo
     [[ -n "$TUNNEL_PUBLIC_BASE_URL" ]] && break
-    echo -n "."
-    sleep 1
+    echo "Cloudflare no pudo crear el túnel en este intento; reintentando…" >&2
+    sleep 3
   done
-  echo
   if [[ -z "$TUNNEL_PUBLIC_BASE_URL" ]]; then
     echo "Error: cloudflared no devolvió una URL. Revise: docker compose --profile cloudflare logs cloudflared" >&2
     exit 1

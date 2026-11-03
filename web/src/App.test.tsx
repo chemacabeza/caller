@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 
@@ -61,6 +61,34 @@ describe('App', () => {
     const demo = screen.getByLabelText(/Modo demostración/) as HTMLInputElement;
     expect(demo.checked).toBe(true);
     expect(demo.disabled).toBe(true);
+  });
+
+  it('pre-fills the number configured on the server', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/config'
+        ? json({ ...config, defaults: { ...config.defaults, number: '+86 138 0013 8000' } })
+        : url === '/api/health' ? json({ ok: true, authenticated: true }) : json({}, 404),
+    );
+    render(<App />);
+    const input = await screen.findByLabelText('Número de teléfono');
+    await waitFor(() => expect(input).toHaveProperty('value', '+86 138 0013 8000'));
+  });
+
+  it('shows saved numbers as one-tap buttons that fill the phone field', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/config'
+        ? json({ ...config, savedNumbers: ['+86 138 0013 8000', '+1 707 555 0123', '+33 6 39 98 12 34'] })
+        : url === '/api/health' ? json({ ok: true, authenticated: true }) : json({}, 404),
+    );
+    render(<App />);
+    const group = await screen.findByRole('group', { name: 'Números guardados' });
+    const us = within(group).getByRole('button', { name: '+1 707 555 0123' });
+    await user.click(us);
+    expect(screen.getByLabelText('Número de teléfono')).toHaveProperty('value', '+1 707 555 0123');
+    expect(us.getAttribute('aria-pressed')).toBe('true');
+    await user.click(within(group).getByRole('button', { name: '+33 6 39 98 12 34' }));
+    expect(screen.getByLabelText('Número de teléfono')).toHaveProperty('value', '+33 6 39 98 12 34');
   });
 
   it('starts a simulated call once and shows the transcript labelled as simulated', async () => {

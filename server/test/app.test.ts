@@ -52,6 +52,21 @@ describe('authentication', () => {
     expect(String(ok.headers['set-cookie'])).toMatch(/HttpOnly; SameSite=Strict/);
   });
 
+  it('ignores whitespace around the password', async () => {
+    const { app } = createApp({ cfg: loadConfig(env), provider: mockProvider() });
+    await request(app).post('/api/session').send({ password: '  secreto \n' }).expect(200);
+  });
+
+  it('throttles per client behind a local proxy (X-Forwarded-For)', async () => {
+    const { app } = createApp({ cfg: loadConfig(env), provider: mockProvider() });
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/api/session').set('X-Forwarded-For', '203.0.113.7').send({ password: 'mal' });
+    }
+    await request(app).post('/api/session').set('X-Forwarded-For', '203.0.113.7').send({ password: 'secreto' }).expect(429);
+    // A different visitor through the same tunnel is not locked out.
+    await request(app).post('/api/session').set('X-Forwarded-For', '198.51.100.9').send({ password: 'secreto' }).expect(200);
+  });
+
   it('requires JSON for state-changing requests (CSRF)', async () => {
     const { agent } = await setup();
     await agent.post('/api/calls').type('form').send({ to: '+34955748835', message: 'Hola' }).expect(415);
@@ -59,6 +74,18 @@ describe('authentication', () => {
 });
 
 describe('config endpoint', () => {
+  it('sends DEFAULT_DESTINATION_NUMBER as the pre-filled number', async () => {
+    const { agent } = await setup({ DEFAULT_DESTINATION_NUMBER: '0086 138 0013 8000' });
+    const res = await agent.get('/api/config').expect(200);
+    expect(res.body.defaults.number).toBe('+86 138 0013 8000');
+  });
+
+  it('sends SAVED_NUMBERS to the client in display format', async () => {
+    const { agent } = await setup({ SAVED_NUMBERS: '+1-707-555-0123,+33639981234' });
+    const res = await agent.get('/api/config').expect(200);
+    expect(res.body.savedNumbers).toEqual(['+1 707 555 0123', '+33 6 39 98 12 34']);
+  });
+
   it('reports missing configuration without leaking secrets', async () => {
     const { agent } = await setup({ TWILIO_AUTH_TOKEN: '', PUBLIC_BASE_URL: '' });
     const res = await agent.get('/api/config').expect(200);
