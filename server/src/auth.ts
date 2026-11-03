@@ -60,6 +60,11 @@ export class Auth {
     res.json({ ok: true });
   }
 
+  /** Forget failed-login counters (used by tests). */
+  clearFailures(): void {
+    this.failures.clear();
+  }
+
   logout(req: Request, res: Response): string | undefined {
     const id = parseCookies(req.headers.cookie)[COOKIE_NAME];
     if (id) this.sessions.delete(id);

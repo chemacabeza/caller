@@ -4,3 +4,5 @@
 **/.env.*
 .git
 *.log
+**/test-results
+**/playwright-report

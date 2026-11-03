@@ -315,5 +315,5 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
     if (!res.headersSent) res.status(500).json({ error: 'Error interno del servidor.' });
   });
 
-  return { app, store };
+  return { app, store, auth };
 }

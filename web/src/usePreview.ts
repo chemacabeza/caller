@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
  * phone call uses (Twilio/Amazon Polly), so the UI labels it "Vista previa aproximada".
  */
 export function usePreview() {
-  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const supported = typeof window !== 'undefined' && Boolean(window.speechSynthesis) && typeof SpeechSynthesisUtterance !== 'undefined';
   const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [speaking, setSpeaking] = useState(false);
 

@@ -20,6 +20,7 @@ Call completion (`status`: Llamando / En llamada / Finalizada / Ocupado / Sin re
 ## Contents
 
 ```
+e2e/      Playwright end-to-end tests (fake Twilio + signed webhooks)
 server/   Node + Express + TypeScript: API, Twilio webhooks, TwiML, demo simulator
 web/      React + TypeScript (Vite): the Spanish UI
 Dockerfile, docker-compose.yml, start.sh, stop.sh
@@ -114,6 +115,37 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
 The **“Modo demostración”** checkbox (forced on when Twilio isn’t configured) runs the same state machine on the server without contacting Twilio. You can pick a scenario: answer with a schedule, answer without a time, silence (the question is repeated, then “No se recibió una respuesta”), busy, or no answer. Simulated calls carry `simulated: true`, the transcript is prefixed `[SIMULADO]`, and the UI shows purple **SIMULADO** badges with a dashed transcript box.
 
 ## Testing
+
+```bash
+npm test            # unit/integration tests (server + web), ~1 s
+npm run test:e2e    # builds the frontend, then runs the Playwright end-to-end suite (~1 min)
+npm run test:all    # both
+npx playwright test --headed      # (inside e2e/) watch the browser
+npx playwright show-report        # (inside e2e/) HTML report after a run
+```
+
+First-time setup for the end-to-end tests: `npx playwright install chromium`.
+
+### End-to-end tests (`e2e/`)
+
+Playwright drives a real Chromium against the real backend and the built frontend. `e2e/support/server.ts` starts two instances:
+
+- **:3101 demo instance:** no Twilio configuration, so only demo mode is available.
+- **:3102 "real" instance:** fully configured with fake credentials. The Twilio REST client is replaced by an in-memory fake that records every create-call and hang-up request. The tests play the part of Twilio by sending webhooks signed with `X-Twilio-Signature`, exactly as Twilio does, and they assert on the TwiML the app returns.
+
+Nothing in the suite contacts Twilio or places a phone call. It contains 84 tests (79 desktop + 5 mobile/Pixel 7) covering:
+
+| Spec | What it covers |
+|---|---|
+| `auth.spec.ts` | Login and logout, wrong password, hardened cookie, session reuse after logout, expired session mid-use, brute-force throttling |
+| `form.spec.ts` | Defaults and editing, initial status, button sizes, character limit, server-side number validation and E.164 normalization, input locking, “Escuchar mensaje” preview (es-ES voice, rate, label, unsupported browsers, never calls) |
+| `demo.spec.ts` | Missing-config explanation, every simulated scenario (answer, answer without a time, silence → repeat → “No se recibió una respuesta”, busy, no answer), hang-up, call log, reset, SIMULADO labelling, real calls refused on an unconfigured server |
+| `real-call.spec.ts` | The full Twilio flow: create-call parameters (E.164, webhooks, 120 s limit), ringing → answer TwiML (pause, Polly es-ES voice, speech Gather after Say) → transcript → thanks + hang-up → completed; silence handling; second-attempt answers; busy, no-answer, and failed statuses; out-of-order callbacks; Colgar while ringing or in conversation; Spanish explanations of provider errors with retry; TwiML escaping; caller ID used as destination |
+| `security.spec.ts` | 401 without a session, JSON-only CSRF rule, a cross-site form post can’t call, unsigned/forged/tampered webhooks rejected, foreign CallSid ignored, session isolation, no secrets in responses, security headers, transcripts deleted on logout |
+| `resilience.spec.ts` | Double clicks and concurrent requests create exactly one call, the “Iniciando…” state, a second tab blocked then able to hang up, SSE → polling fallback (no EventSource / broken stream), polling stops when the call ends, backend unreachable, SPA fallback, `lang="es"` |
+| `mobile.spec.ts` | Single-column layout without horizontal scroll, tap-sized buttons, telephone keypad, a full call by touch without a microphone |
+
+### Unit and integration tests
 
 - `npm test` runs the server tests (phone normalization, TwiML, answer heuristic, auth, duplicate protection, signature validation, full webhook flows, demo + SSE, all with a **mocked** Twilio provider) and the web tests (UI rendering, demo flow, double-click protection).
 - **Manual real-call test with a number you own.** Before calling any business, test the real integration with your own mobile:
