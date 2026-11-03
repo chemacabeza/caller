@@ -10,10 +10,23 @@ services:
         required: false
     environment:
       PORT: "3001"
+      # Filled in by ./start.sh --cloudflare with the quick tunnel's URL; empty otherwise.
+      TUNNEL_PUBLIC_BASE_URL: ${TUNNEL_PUBLIC_BASE_URL:-}
     ports:
       - "127.0.0.1:${APP_PORT:-3001}:3001"
 
-  # Optional HTTPS tunnel so Twilio can reach the webhooks.
+  # Optional HTTPS tunnels so Twilio can reach the webhooks (use one of them).
+
+  # Cloudflare quick tunnel: no account needed, random https://*.trycloudflare.com URL on every start.
+  # Enabled with:  ./start.sh --cloudflare
+  # Not restarted automatically: a restart would change the URL. Run ./start.sh --cloudflare again instead.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["cloudflare"]
+    restart: "no"
+    command: ["tunnel", "--no-autoupdate", "--url", "http://app:3001"]
+
+  # ngrok with a fixed domain.
   # Enabled with:  ./start.sh --tunnel   (needs NGROK_AUTHTOKEN and NGROK_DOMAIN in server/.env)
   tunnel:
     image: ngrok/ngrok:latest

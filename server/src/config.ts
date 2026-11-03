@@ -46,7 +46,9 @@ function int(value: string | undefined, fallback: number, min: number, max: numb
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const generated = !env.APP_PASSWORD;
-  const publicBaseUrl = (env.PUBLIC_BASE_URL ?? '').trim().replace(/\/+$/, '');
+  // TUNNEL_PUBLIC_BASE_URL is set automatically by start.sh for the Cloudflare quick tunnel
+  // (its URL changes on every start) and takes precedence over PUBLIC_BASE_URL.
+  const publicBaseUrl = (env.TUNNEL_PUBLIC_BASE_URL || env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
   return {
     port: int(env.PORT, 3001, 1, 65535),
     twilioAccountSid: (env.TWILIO_ACCOUNT_SID ?? '').trim(),

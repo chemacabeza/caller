@@ -33,7 +33,8 @@ Dockerfile, docker-compose.yml, start.sh, stop.sh
 ```bash
 cp server/.env.example server/.env   # start.sh does this for you if missing
 ./start.sh                           # http://localhost:3001
-./start.sh --tunnel                  # also starts an ngrok HTTPS tunnel (see below)
+./start.sh --cloudflare              # also starts a Cloudflare quick tunnel for real calls (no account)
+./start.sh --tunnel                  # …or an ngrok tunnel with a fixed domain (see below)
 ./stop.sh                            # stop (add --clean to remove the image)
 ```
 
@@ -62,6 +63,7 @@ Open http://localhost:5173 in development, or http://localhost:3001 after `npm r
 | `TWILIO_AUTH_TOKEN` | for real calls | Auth token (also used to validate webhook signatures) |
 | `TWILIO_FROM_NUMBER` | for real calls | A Twilio number you own, or a verified caller ID, in E.164. Must differ from the destination. `TWILIO_PHONE_NUMBER` is accepted as an alias. |
 | `PUBLIC_BASE_URL` | for real calls | Public **HTTPS** URL forwarding to port 3001, no trailing slash |
+| `TUNNEL_PUBLIC_BASE_URL` | no | Set automatically by `./start.sh --cloudflare`; overrides `PUBLIC_BASE_URL` |
 | `TTS_VOICE` | no | Default `Polly.Lucia-Neural`. Other es-ES voices: `Polly.Sergio-Neural`, `Polly.Lucia-Generative` / `Polly.Sergio-Generative` (public beta), `Polly.Conchita`, `Polly.Enrique` |
 | `TTS_RATE` | no | SSML prosody rate for Polly voices, default `95%`; empty disables |
 | `GREETING_PAUSE_SECONDS` | no | Silence after pick-up for the recipient’s “¿Diga?” (default 2) |
@@ -99,7 +101,15 @@ ngrok http --url=your-subdomain.ngrok-free.app 3001
 
 Or use the bundled container: set `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` in `server/.env`, then `./start.sh --tunnel`. The ngrok inspector runs at http://localhost:4040.
 
-**cloudflared**: `cloudflared tunnel --url http://localhost:3001` prints a random `https://…trycloudflare.com` URL. Put it in `PUBLIC_BASE_URL` and restart the backend (the URL changes on each run).
+**Cloudflare quick tunnel (no account, easiest).** Run `./start.sh --cloudflare`. The script:
+
+1. starts a `cloudflare/cloudflared` container and reads the random `https://…trycloudflare.com` URL it gets;
+2. passes that URL to the app as `TUNNEL_PUBLIC_BASE_URL`, which overrides `PUBLIC_BASE_URL` (your `.env` is not modified);
+3. checks that `/api/health` answers through the tunnel and that an unsigned webhook is rejected with 403.
+
+The URL changes every time the tunnel starts, so the container is not auto-restarted; just run `./start.sh --cloudflare` again. Quick tunnels have no uptime guarantee and are meant for testing. Note that the UI is also reachable through the tunnel URL, protected by `APP_PASSWORD`, so set a strong one.
+
+Without Docker: `cloudflared tunnel --url http://localhost:3001`, then put the printed URL in `PUBLIC_BASE_URL` (or `TUNNEL_PUBLIC_BASE_URL`) and restart the backend.
 
 Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart the backend after changing `.env`.
 

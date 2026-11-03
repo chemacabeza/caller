@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stops "Llamadas en Español".
 #
-#   ./stop.sh          stop and remove the containers (app + tunnel, if running)
+#   ./stop.sh          stop and remove the containers (app + any tunnel)
 #   ./stop.sh --clean  also remove the built image
 #
 # Transcripts live only in memory, so stopping the app deletes them.
@@ -20,8 +20,8 @@ done
 command -v docker >/dev/null || { echo "Error: Docker no está instalado." >&2; exit 1; }
 
 if $CLEAN; then
-  docker compose --profile tunnel down --rmi local --remove-orphans
+  docker compose --profile tunnel --profile cloudflare down --rmi local --remove-orphans
 else
-  docker compose --profile tunnel down --remove-orphans
+  docker compose --profile tunnel --profile cloudflare down --remove-orphans
 fi
 echo "Aplicación detenida."
