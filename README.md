@@ -32,9 +32,10 @@ Dockerfile, docker-compose.yml, start.sh, stop.sh
 
 ```bash
 cp server/.env.example server/.env   # start.sh does this for you if missing
-./start.sh                           # http://localhost:3001
-./start.sh --cloudflare              # also starts a Cloudflare quick tunnel for real calls (no account)
+./start.sh                           # http://localhost:3001 + Cloudflare quick tunnel for real calls (no account)
+./start.sh --cloudflare              # same as above
 ./start.sh --tunnel                  # …or an ngrok tunnel with a fixed domain (see below)
+./start.sh --local                   # no tunnel (demo mode unless PUBLIC_BASE_URL is set)
 ./stop.sh                            # stop (add --clean to remove the image)
 ```
 
@@ -103,7 +104,7 @@ ngrok http --url=your-subdomain.ngrok-free.app 3001
 
 Or use the bundled container: set `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` in `server/.env`, then `./start.sh --tunnel`. The ngrok inspector runs at http://localhost:4040.
 
-**Cloudflare quick tunnel (no account, easiest).** Run `./start.sh --cloudflare`. The script:
+**Cloudflare quick tunnel (no account, easiest).** Run `./start.sh` (or `./start.sh --cloudflare`; the tunnel is the default). The script:
 
 1. starts a `cloudflare/cloudflared` container and reads the random `https://…trycloudflare.com` URL it gets;
 2. passes that URL to the app as `TUNNEL_PUBLIC_BASE_URL`, which overrides `PUBLIC_BASE_URL` (your `.env` is not modified);

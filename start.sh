@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Starts "Llamadas en Español" in Docker.
 #
-#   ./start.sh              build (if needed) and start the app on http://localhost:3001
-#   ./start.sh --cloudflare also start a Cloudflare quick tunnel (no account, new URL each start)
-#   ./start.sh --tunnel     also start an ngrok tunnel (needs NGROK_AUTHTOKEN/NGROK_DOMAIN)
+#   ./start.sh              build (if needed), start the app on http://localhost:3001 and a
+#                           Cloudflare quick tunnel for real calls (same as --cloudflare)
+#   ./start.sh --cloudflare same as above (no account, new URL each start)
+#   ./start.sh --tunnel     use an ngrok tunnel instead (needs NGROK_AUTHTOKEN/NGROK_DOMAIN)
+#   ./start.sh --local      start without any tunnel (demo mode unless PUBLIC_BASE_URL is set)
 #   ./start.sh --no-build   start without rebuilding the image
 #
 # Configuration and secrets are read from server/.env (git-ignored).
@@ -12,20 +14,24 @@ cd "$(dirname "$0")"
 
 NGROK=false
 CLOUDFLARE=false
+LOCAL=false
 BUILD=true
 for arg in "$@"; do
   case "$arg" in
     --tunnel|--ngrok) NGROK=true ;;
     --cloudflare) CLOUDFLARE=true ;;
+    --local|--no-tunnel) LOCAL=true ;;
     --no-build) BUILD=false ;;
-    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Opción desconocida: $arg (use --help)" >&2; exit 2 ;;
   esac
 done
-if $NGROK && $CLOUDFLARE; then
-  echo "Error: use --cloudflare o --tunnel, no ambos." >&2
+if [[ "$NGROK$CLOUDFLARE$LOCAL" == *true*true* ]]; then
+  echo "Error: use solo una de --cloudflare, --tunnel o --local." >&2
   exit 2
 fi
+# The Cloudflare quick tunnel is the default, so real calls work out of the box.
+if ! $NGROK && ! $LOCAL; then CLOUDFLARE=true; fi
 
 command -v docker >/dev/null || { echo "Error: Docker no está instalado." >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Error: se necesita 'docker compose' (Compose v2)." >&2; exit 1; }
