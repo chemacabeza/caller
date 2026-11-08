@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import twilio from 'twilio';
 import { configProblems, missingTwilioConfig, type AppConfig } from './config.js';
-import { normalizePhoneNumber } from './phone.js';
+import { callingCodeOf, normalizePhoneNumber } from './phone.js';
 import { CallStore, errorPatch, isFinal, mapProviderStatus, type CallRecord } from './callStore.js';
 import { errorBody, msg, type Msg } from './messages.js';
 import { createTwilioProvider, ProviderError, type VoiceProvider } from './provider.js';
@@ -21,10 +21,6 @@ export interface AppDeps {
   demoStepMs?: number;
 }
 
-/** "+34", "+86", "+1"… from an E.164 number of a supported country. */
-function countryPrefix(e164: string): string {
-  return ['+1', '+33', '+34', '+39', '+49', '+86'].find((p) => e164.startsWith(p)) ?? e164.slice(0, 3);
-}
 
 export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
   const app = express();
@@ -161,7 +157,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
         // Keep Twilio's exact reason in the server log for diagnosis.
         console.warn(`Twilio rechazó la llamada a ${phone.e164}: código ${err.code ?? '?'} (HTTP ${err.httpStatus ?? '?'}): ${err.providerMessage ?? err.message}`);
         if (m.code === 'provider.21215' || m.code === 'provider.21216' || m.code === 'provider.13227') {
-          m = msg(m.code, { prefix: countryPrefix(phone.e164) });
+          m = msg(m.code, { prefix: callingCodeOf(phone.e164) });
         }
       } else {
         console.error(err);

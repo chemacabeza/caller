@@ -69,7 +69,7 @@ Open http://localhost:5173 in development, or http://localhost:3001 after `npm r
 | `PUBLIC_BASE_URL` | for real calls | Public **HTTPS** URL forwarding to port 3001, no trailing slash |
 | `HOST` | no | Interface to listen on. Docker Compose sets `127.0.0.1`; empty = all interfaces |
 | `TUNNEL_PUBLIC_BASE_URL` | no | Set automatically by `./start.sh --cloudflare`; overrides `PUBLIC_BASE_URL` |
-| `DEFAULT_DESTINATION_NUMBER` | no | Number pre-filled in the form (Spain, France, Germany, Italy, China, or USA/Canada), default `+34 955 74 88 35`. Still editable in the UI. |
+| `DEFAULT_DESTINATION_NUMBER` | no | Number pre-filled in the form (any country, with its international code), default `+34 955 74 88 35`. Still editable in the UI. |
 | `SAVED_NUMBERS` | no | Comma-separated numbers shown as one-tap buttons under the phone field, e.g. `+86 138 0013 8000, +1-707-555-0123, +33 6 39 98 12 34, +491711234567` |
 | `TTS_VOICE` | no | Default `Polly.Lucia-Neural`. Other es-ES voices: `Polly.Sergio-Neural`, `Polly.Lucia-Generative` / `Polly.Sergio-Generative` (public beta), `Polly.Conchita`, `Polly.Enrique` |
 | `TTS_RATE` | no | SSML prosody rate for Polly voices, default `95%`; empty disables |
@@ -127,13 +127,14 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
 - The call-control API requires a password login: an HttpOnly, `SameSite=Strict` session cookie, plus a JSON-only rule as CSRF defence, and brute-force throttling. The cookie is a token signed with a key derived from `APP_PASSWORD` (HMAC-SHA256), so you only enter the password once per browser: it stays valid across restarts for `SESSION_DAYS` (default 365). *Cerrar sesión* revokes it (remembered until the next restart; the browser also deletes the cookie). Change `APP_PASSWORD` to log every browser out.
 - Every Twilio webhook is checked against `X-Twilio-Signature` using the Auth Token and `PUBLIC_BASE_URL`. Invalid signatures get 403. Callbacks whose `CallSid` doesn’t match the call are ignored.
 - **Duplicate calls are prevented:** only one call can be active at a time (409 otherwise), with a lock covering the creation window. The *Llamar* button also disables itself synchronously.
-- Phone numbers are normalized and validated server-side. Supported destinations:
+- Phone numbers are normalized and validated server-side. **Any country** can be called; the number must include its international code (`+` or `00`), except 9-digit Spanish numbers. These countries have hand-written rules:
   - **Spain (+34):** 9 digits without a country code are treated as Spanish. Premium prefixes 803, 806, 807, 905, and 907 are refused.
   - **France (+33):** e.g. `+33 6 39 98 12 34`. `+33`/`0033` is required. 08 special-rate numbers are refused, except 080 freephone.
   - **Germany (+49):** mobiles such as `+49 171 1234567`, landlines, and 0800. `+49`/`0049` is required. 0900, 0137, 0118, and 0180 numbers are refused.
   - **Italy (+39):** mobiles such as `+39 312 345 6789`, landlines that keep their leading 0 (`+39 06 1234 5678`), and 800/803. `+39`/`0039` is required. 89x, 16x, 14x, 178, and 199 numbers are refused.
   - **China (+86):** mobiles such as `+86 138 0013 8000`, and landlines with an area code. `+86`/`0086` is required.
   - **USA/Canada (+1):** e.g. `+1-707-555-0123`. `+1`/`001` is required. Premium 900/976 numbers are refused.
+  - **Every other country** (e.g. `+44 20 7946 0958`, `+52 55 1234 5678`, `+351 21 123 4567`): validated with [libphonenumber-js](https://gitlab.com/catamphetamine/libphonenumber-js) (Google’s numbering-plan data) and shown in international format. Premium-rate and shared-cost numbers are refused.
 
   Each destination country must also be enabled in Twilio Geo permissions. China does not appear in Twilio’s geo-permission list for this account, so calls there need Twilio Support.
 - Recording is disabled (`record: false`, no `<Record>`). Transcripts are held **in memory only**, visible only to the session that made the call, and deleted after `TRANSCRIPT_TTL_MINUTES`, on logout, or on restart.

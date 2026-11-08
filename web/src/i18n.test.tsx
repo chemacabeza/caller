@@ -68,7 +68,7 @@ describe('language switch', () => {
         if (url === '/api/health') return json({ ok: true, authenticated: true });
         if (url === '/api/config') return json(config);
         if (url === '/api/calls' && init?.method === 'POST') {
-          return json({ error: 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1). Salvo los españoles, deben incluir el prefijo del país.', code: 'phone.unsupported_country', field: 'to' }, 400);
+          return json({ error: 'Incluya el prefijo internacional del país con + o 00 (p. ej. +44 20 7946 0958). Solo los números españoles de 9 dígitos se pueden escribir sin prefijo.', code: 'phone.unsupported_country', field: 'to' }, 400);
         }
         return json({}, 404);
       }),
@@ -116,10 +116,10 @@ describe('language switch', () => {
     render(<App initialLang="en" />);
     const button = await screen.findByRole('button', { name: /Call \(simulated\)/ });
     await user.clear(screen.getByLabelText('Phone number'));
-    await user.type(screen.getByLabelText('Phone number'), '+44 20 7946 0958');
+    await user.type(screen.getByLabelText('Phone number'), '447911123456');
     await user.click(button);
-    expect((await screen.findByRole('alert')).textContent).toBe('Only Spanish (+34), French (+33), German (+49), Italian (+39), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
+    expect((await screen.findByRole('alert')).textContent).toBe('Include the country’s international code with + or 00 (e.g. +44 20 7946 0958). Only 9-digit Spanish numbers can be written without it.');
     await user.click(screen.getByRole('button', { name: 'ES' }));
-    expect(screen.getByRole('alert').textContent).toBe('Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1). Salvo los españoles, deben incluir el prefijo del país.');
+    expect(screen.getByRole('alert').textContent).toBe('Incluya el prefijo internacional del país con + o 00 (p. ej. +44 20 7946 0958). Solo los números españoles de 9 dígitos se pueden escribir sin prefijo.');
   });
 });

@@ -23,7 +23,7 @@ describe('DEFAULT_DESTINATION_NUMBER', () => {
   });
   it('falls back and reports a problem when the number is unsupported', async () => {
     const { configProblems } = await import('../src/config.js');
-    const cfg = loadConfig({ DEFAULT_DESTINATION_NUMBER: '+44 20 7946 0958' });
+    const cfg = loadConfig({ DEFAULT_DESTINATION_NUMBER: '+44 1234' });
     expect(cfg.defaultDestination).toBe('+34 955 74 88 35');
     expect(configProblems(cfg).map((p) => p.code)).toContain('problem.default_destination_invalid');
   });
@@ -40,10 +40,10 @@ describe('SAVED_NUMBERS', () => {
   });
   it('ignores unsupported entries and reports them', async () => {
     const { configProblems } = await import('../src/config.js');
-    const cfg = loadConfig({ SAVED_NUMBERS: '+44 20 7946 0958, +1 707 555 0123' });
-    expect(cfg.savedNumbers).toEqual(['+1 707 555 0123']);
+    const cfg = loadConfig({ SAVED_NUMBERS: '+44 1234, +1 707 555 0123, +44 20 7946 0958' });
+    expect(cfg.savedNumbers).toEqual(['+1 707 555 0123', '+44 20 7946 0958']);
     const problem = configProblems(cfg).find((p) => p.code === 'problem.saved_numbers_invalid');
-    expect(problem?.params).toEqual({ numbers: '+44 20 7946 0958' });
+    expect(problem?.params).toEqual({ numbers: '+44 1234' });
   });
 });
 

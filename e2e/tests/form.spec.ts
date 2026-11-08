@@ -2,7 +2,7 @@ import { test, expect, stubSpeechSynthesis, login, DEMO_URL, E2E } from '../supp
 
 test.describe('Formulario de llamada', () => {
   test('the help text names both supported countries', async ({ demoPage: page }) => {
-    await expect(page.getByText('Números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) o EE. UU./Canadá (+1).')).toBeVisible();
+    await expect(page.getByText(/Cualquier país, con su prefijo internacional/)).toBeVisible();
   });
 
   test('is prefilled with the requested number and message, both editable', async ({ demoPage: page }) => {
@@ -58,13 +58,14 @@ test.describe('Formulario de llamada', () => {
   });
 
   for (const [input, error] of [
-    ['+44 20 7946 0958', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1).'],
+    ['+44 1234', 'Número no válido para su país'],
+    ['+44 909 879 0000', 'No se permiten números de tarificación especial ni de coste compartido.'],
     ['+86 138 0013 800', 'Número chino no válido'],
     ['+1 900 555 0123', 'No se permiten números de tarificación especial de EE. UU.'],
     ['+33 891 12 34 56', 'No se permiten números franceses de tarificación especial'],
     ['+49 900 1234567', 'No se permiten números alemanes de tarificación especial'],
     ['+39 899 123 456', 'No se permiten números italianos de tarificación especial'],
-    ['13800138000', 'Por ahora solo se admiten números de España (+34), Francia (+33), Alemania (+49), Italia (+39), China (+86) y EE. UU./Canadá (+1).'],
+    ['13800138000', 'Incluya el prefijo internacional del país con + o 00'],
     ['+34 955 74', 'Un número español debe tener 9 dígitos'],
     ['+34 806 12 34 56', 'tarificación especial'],
     ['955-abc-835', 'El número solo puede contener'],

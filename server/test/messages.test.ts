@@ -30,9 +30,9 @@ describe('message catalogue', () => {
   });
 
   it('phone validation errors carry codes', () => {
-    const r = normalizePhoneNumber('+44 20 7946 0958');
+    const r = normalizePhoneNumber('+44 1234');
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.msg.code).toBe('phone.unsupported_country');
+    if (!r.ok) expect(r.msg.code).toBe('phone.intl_invalid');
   });
 
   it('provider errors map Twilio codes, with a generic fallback', () => {

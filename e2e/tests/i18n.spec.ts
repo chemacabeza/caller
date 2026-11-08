@@ -89,9 +89,9 @@ test.describe('Idioma / Language (ES · EN)', () => {
 
   test('server validation errors are shown in English', async ({ demoPage: page }) => {
     await page.getByRole('button', { name: 'EN', exact: true }).click();
-    await page.getByLabel('Phone number').fill('+44 20 7946 0958');
+    await page.getByLabel('Phone number').fill('+44 1234');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
-    await expect(page.getByRole('alert')).toHaveText('Only Spanish (+34), French (+33), German (+49), Italian (+39), Chinese (+86) and US/Canadian (+1) numbers are supported for now. Except for Spanish numbers, include the country code.');
+    await expect(page.getByRole('alert')).toHaveText('This is not a valid number for its country. Check the international code and the number of digits (e.g. +44 20 7946 0958, +52 55 1234 5678).');
     await page.getByLabel('Phone number').fill('+86 138 0013 800');
     await page.getByRole('button', { name: /Call \(simulated\)/ }).click();
     await expect(page.getByRole('alert')).toHaveText('Invalid Chinese number: use an 11-digit mobile starting with 1 (e.g. +86 138 0013 8000) or a landline with its area code.');

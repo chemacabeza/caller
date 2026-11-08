@@ -1,7 +1,12 @@
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { msg, type Msg } from './messages.js';
 
-/** ES = Spain, FR = France, DE = Germany, IT = Italy, CN = China, NANP = North American Numbering Plan (+1: USA, Canada…). */
-export type Country = 'ES' | 'FR' | 'DE' | 'IT' | 'CN' | 'NANP';
+/**
+ * ES = Spain, FR = France, DE = Germany, IT = Italy, CN = China, NANP = North American Numbering Plan
+ * (+1: USA, Canada…). Any other country: its ISO 3166 code (e.g. "GB", "MX"), or "INTL" for
+ * non-geographic numbers.
+ */
+export type Country = 'ES' | 'FR' | 'DE' | 'IT' | 'CN' | 'NANP' | (string & {});
 
 export type PhoneResult =
   | { ok: true; e164: string; display: string; country: Country }
@@ -24,6 +29,8 @@ const ES_PREMIUM_PREFIXES = ['803', '806', '807', '905', '907'];
  * +33:   "+33 6 39 98 12 34", "+33 (0)6 39 98 12 34", "0033 639981234". A country code is required.
  * +49:   "+491711234567", "+49 (0)171 1234567", "0049 30 1234567". A country code is required.
  * +39:   "+39 312 345 6789" (mobile), "+39 06 1234 5678" (landline: the 0 is kept). A country code is required.
+ * Any other country: "+44 20 7946 0958", "0052 55 1234 5678"… validated with libphonenumber
+ *        (Google's numbering-plan data); premium-rate and shared-cost numbers are refused.
  */
 export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (typeof input !== 'string' || !input.trim()) {
@@ -54,7 +61,24 @@ export function normalizePhoneNumber(input: unknown): PhoneResult {
   if (digits.startsWith('39')) return italy(digits.slice(2));
   if (digits.startsWith('86')) return china(digits.slice(2));
   if (digits.startsWith('1')) return nanp(digits.slice(1));
-  return fail(msg('phone.unsupported_country'));
+  return international(digits);
+}
+
+/** Types that can cost far more than a normal call. */
+const INTL_BLOCKED_TYPES = new Set(['PREMIUM_RATE', 'SHARED_COST']);
+
+/** Any other country, validated against libphonenumber's metadata. */
+function international(digits: string): PhoneResult {
+  const parsed = parsePhoneNumberFromString(`+${digits}`);
+  if (!parsed || !parsed.isValid()) return fail(msg('phone.intl_invalid'));
+  if (INTL_BLOCKED_TYPES.has(parsed.getType() ?? '')) return fail(msg('phone.intl_premium'));
+  return { ok: true, country: parsed.country ?? 'INTL', e164: parsed.number, display: parsed.formatInternational() };
+}
+
+/** "+44", "+52", "+1"… country calling code of an E.164 number. */
+export function callingCodeOf(e164: string): string {
+  const code = parsePhoneNumberFromString(e164)?.countryCallingCode;
+  return code ? `+${code}` : e164.slice(0, 3);
 }
 
 function spain(national: string): PhoneResult {

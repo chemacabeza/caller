@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePhoneNumber } from '../src/phone.js';
+import { callingCodeOf, normalizePhoneNumber } from '../src/phone.js';
 
 describe('normalizePhoneNumber — Spain (+34)', () => {
   it.each([
@@ -191,9 +191,11 @@ describe('normalizePhoneNumber — Italy (+39)', () => {
 describe('normalizePhoneNumber — general', () => {
   it.each([
     ['', 'phone.empty'],
-    ['+44 20 7946 0958', 'phone.unsupported_country'],
-    ['+44 20 7946 0959', 'phone.unsupported_country'],
-    ['+351 21 123 4567', 'phone.unsupported_country'], // Portugal
+    ['+44 1234', 'phone.intl_invalid'], // too short
+    ['+999 1234567', 'phone.intl_invalid'], // unassigned country code
+    ['+351 21 123', 'phone.intl_invalid'], // Portugal, too short
+    ['+44 909 879 0000', 'phone.intl_premium'], // UK premium rate
+    ['+44 871 123 4567', 'phone.intl_premium'], // UK shared cost
     ['955abc', 'phone.chars'],
     ['34+955748835', 'phone.plus'],
   ])('rejects %s', (input, code) => {
@@ -204,5 +206,33 @@ describe('normalizePhoneNumber — general', () => {
 
   it('rejects non-strings', () => {
     expect(normalizePhoneNumber(12345).ok).toBe(false);
+  });
+});
+
+describe('normalizePhoneNumber — any other country', () => {
+  it.each([
+    ['+44 20 7946 0958', '+442079460958', '+44 20 7946 0958'], // UK landline
+    ['0044 7911 123456', '+447911123456', '+44 7911 123456'], // UK mobile, 00 prefix
+    ['+52 55 1234 5678', '+525512345678', '+52 55 1234 5678'], // Mexico
+    ['+351 21 123 4567', '+351211234567', '+351 21 123 4567'], // Portugal
+    ['+81 3-1234-5678', '+81312345678', '+81 3 1234 5678'], // Japan
+    ['+55 (11) 91234-5678', '+5511912345678', '+55 11 91234 5678'], // Brazil
+    ['+91 98765 43210', '+919876543210', '+91 98765 43210'], // India
+    ['+61 2 1234 5678', '+61212345678', '+61 2 1234 5678'], // Australia
+  ])('accepts %s', (input, e164, display) => {
+    expect(normalizePhoneNumber(input)).toMatchObject({ ok: true, e164, display });
+  });
+
+  it('still needs + or 00 for non-Spanish numbers', () => {
+    const r = normalizePhoneNumber('447911123456');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.msg.code).toBe('phone.unsupported_country');
+  });
+
+  it('callingCodeOf returns the country calling code', () => {
+    expect(callingCodeOf('+442079460958')).toBe('+44');
+    expect(callingCodeOf('+351211234567')).toBe('+351');
+    expect(callingCodeOf('+17075550123')).toBe('+1');
+    expect(callingCodeOf('+8613800138000')).toBe('+86');
   });
 });
