@@ -47,6 +47,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "Se ha creado $ENV_FILE a partir de la plantilla. Rellénelo para hacer llamadas reales (el modo demostración funciona sin él)."
 fi
 
+# Percent-encodes a string for use in a URL.
+urlencode() {
+  local LC_ALL=C s="$1" out="" c i
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
 # Reads KEY=value from server/.env without executing it.
 env_value() { grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//' || true; }
 
@@ -189,6 +202,11 @@ $NGROK && echo "Túnel HTTPS (ngrok): $PUBLIC_URL   ·   Inspector ngrok: http:/
 APP_PASSWORD_VALUE="$(env_value APP_PASSWORD)"
 if [[ -n "$APP_PASSWORD_VALUE" ]]; then
   echo "Contraseña de la interfaz (APP_PASSWORD en $ENV_FILE): $APP_PASSWORD_VALUE"
+  # Login link: the page fills in the password after "#" and logs in by itself. The part after "#"
+  # stays in the browser (never sent to Cloudflare or the server). Share it only with people you trust.
+  enc="$(urlencode "$APP_PASSWORD_VALUE")"
+  echo "Enlace con inicio de sesión automático: http://localhost:${APP_PORT}/#clave=$enc"
+  [[ -n "$PUBLIC_URL" ]] && echo "Enlace público con inicio de sesión automático: $PUBLIC_URL/#clave=$enc"
 else
   docker compose logs app 2>/dev/null | grep -i "contraseña temporal" | tail -n1 || true
 fi

@@ -17,9 +17,8 @@ async function startRealCall(page: Page, request: APIRequestContext, n = 1) {
 test.describe('Llamada real (Twilio simulado por la prueba)', () => {
   test('defaults to real mode with a visible warning and no config notice', async ({ realPage: page }) => {
     await expect(page.locator('.alert.info')).toHaveCount(0);
-    const demo = page.getByLabel(/Modo demostración/);
-    await expect(demo).not.toBeChecked();
-    await expect(demo).toBeEnabled();
+    // A configured server only makes real calls: there is no demo option to tick by mistake.
+    await expect(page.getByLabel(/Modo demostración/)).toHaveCount(0);
     await expect(page.locator('.alert.real')).toContainText('Se realizará una llamada real a +34 955 74 88 35');
     await expect(page.locator('.alert.real')).toContainText('Puede tener coste');
     await expect(page.getByRole('button', { name: '📞 Llamar', exact: true })).toBeVisible();
@@ -204,14 +203,13 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
     });
   }
 
-  test('demo mode can still be chosen on a configured server and never reaches Twilio', async ({ realPage: page, request }) => {
-    await page.getByLabel(/Modo demostración/).check();
-    await expect(page.locator('.alert.real')).toHaveCount(0);
-    await page.getByLabel('Escenario simulado').selectOption('ocupado');
-    await page.getByRole('button', { name: 'Llamar (simulado)' }).click();
-    await expect(status(page)).toHaveText('Ocupado');
-    await expect(page.locator('.status-row .tag.sim')).toHaveText('SIMULADO');
-    expect((await fakeTwilio(request)).created).toHaveLength(0);
+  test('a configured server offers no demo mode: Llamar always places a real call', async ({ realPage: page, request }) => {
+    await expect(page.getByLabel(/Modo demostración/)).toHaveCount(0);
+    await expect(page.getByLabel('Escenario simulado')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /simulado/ })).toHaveCount(0);
+    await page.getByRole('button', { name: '📞 Llamar', exact: true }).click();
+    await waitForCreatedCall(request, 1);
+    await expect(page.locator('.status-row .tag.sim')).toHaveCount(0);
   });
 
   test('the message is XML-escaped in the TwiML sent to Twilio', async ({ realPage: page, request }) => {
@@ -255,9 +253,6 @@ test.describe('Llamada real (Twilio simulado por la prueba)', () => {
   test('warns that Twilio may not allow China, and shows Twilio\'s rejection with the +86 prefix', async ({ realPage: page, request }) => {
     await page.getByLabel('Número de teléfono').fill('+86 138 0013 8000');
     await expect(page.getByTestId('china-warning')).toContainText('es posible que su cuenta de Twilio no permita llamar a China');
-    await page.getByLabel(/Modo demostración/).check();
-    await expect(page.getByTestId('china-warning')).toHaveCount(0);
-    await page.getByLabel(/Modo demostración/).uncheck();
     await request.post(`${REAL_URL}/__e2e/twilio/fail-next`, { data: { code: 21215, message: 'not allowed' } });
     await page.getByRole('button', { name: '📞 Llamar', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveText(

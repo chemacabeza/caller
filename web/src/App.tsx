@@ -38,9 +38,25 @@ function LanguageSwitch() {
   );
 }
 
+/**
+ * Password from a login link such as https://host/#clave=SECRET (printed by start.sh).
+ * The part after "#" never leaves the browser (it is not sent to Cloudflare or the server).
+ * It is removed from the address bar right away so it doesn't stay on screen.
+ */
+export function takeLinkPassword(): string {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return '';
+  const params = new URLSearchParams(hash);
+  const password = params.get('clave') ?? params.get('password') ?? '';
+  if (password) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  return password.trim();
+}
+
 function Shell() {
   const { t, tm } = useI18n();
   const [auth, setAuth] = useState<'checking' | 'out' | 'in'>('checking');
+  // Used for one automatic login only, so "Cerrar sesión" really logs out.
+  const [linkPassword, setLinkPassword] = useState(takeLinkPassword);
   const [bootError, setBootError] = useState<ServerMessage | null>(null);
 
   useEffect(() => {
@@ -76,30 +92,61 @@ function Shell() {
       </header>
       {bootError && <p className="alert error" role="alert">{tm(bootError)}</p>}
       {auth === 'checking' && <p className="muted">{t('common.loading')}</p>}
-      {auth === 'out' && <Login onLoggedIn={() => { setBootError(null); setAuth('in'); }} />}
+      {auth === 'out' && (
+        <Login
+          initialPassword={linkPassword}
+          onLoggedIn={() => { setBootError(null); setLinkPassword(''); setAuth('in'); }}
+          onAutoLoginFailed={() => setLinkPassword('')}
+        />
+      )}
       {auth === 'in' && <Caller onUnauthorized={() => setAuth('out')} />}
     </div>
   );
 }
 
-function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+function Login({
+  onLoggedIn,
+  initialPassword = '',
+  onAutoLoginFailed,
+}: {
+  onLoggedIn: () => void;
+  initialPassword?: string;
+  onAutoLoginFailed?: () => void;
+}) {
   const { t, tm } = useI18n();
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(initialPassword);
   const [error, setError] = useState<ServerMessage | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const doLogin = useCallback(
+    async (value: string, auto = false) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await api.login(value);
+        onLoggedIn();
+      } catch (err) {
+        setError(toMessage(err));
+        if (auto) onAutoLoginFailed?.();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onLoggedIn, onAutoLoginFailed],
+  );
+
+  // Login link: the password is filled in from the link and submitted automatically.
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (initialPassword && !autoTried.current) {
+      autoTried.current = true;
+      void doLogin(initialPassword, true);
+    }
+  }, [initialPassword, doLogin]);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.login(password);
-      onLoggedIn();
-    } catch (err) {
-      setError(toMessage(err));
-    } finally {
-      setBusy(false);
-    }
+    await doLogin(password);
   };
 
   const [before, after] = t('auth.help').split('{env}');
@@ -327,10 +374,13 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
 
           <fieldset className="mode" disabled={active || starting}>
             <legend>{t('mode.legend')}</legend>
-            <label className="check">
-              <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} disabled={!config?.realCallsPossible} />
-              {t('mode.demo')}
-            </label>
+            {/* Real calls only when the server can place them; demo mode is shown (and forced) only otherwise. */}
+            {config && !config.realCallsPossible && (
+              <label className="check">
+                <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} disabled />
+                {t('mode.demo')}
+              </label>
+            )}
             {demo && config && (
               <>
                 <label htmlFor="scenario">{t('mode.scenario')}</label>

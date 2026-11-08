@@ -40,7 +40,7 @@ cp server/.env.example server/.env   # start.sh does this for you if missing
 ./stop.sh                            # stop (add --clean to remove the image)
 ```
 
-`start.sh` prints the web UI password (`APP_PASSWORD`) next to the links when it finishes. If `APP_PASSWORD` is empty, a temporary password is generated and printed instead (also in `docker compose logs app`).
+`start.sh` prints the web UI password (`APP_PASSWORD`) next to the links when it finishes, plus **login links** (`…/#clave=<password>`) that fill in the password and log in automatically. The part after `#` stays in the browser (it is never sent to Cloudflare or the server) and is removed from the address bar after use; the plain link still asks for the password. Share login links only with people you trust. If `APP_PASSWORD` is empty, a temporary password is generated and printed instead (also in `docker compose logs app`).
 
 Without Twilio configuration the app runs in **demo mode** only.
 
@@ -140,7 +140,7 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
 
 ## Demo mode
 
-The **“Modo demostración”** checkbox (forced on when Twilio isn’t configured) runs the same state machine on the server without contacting Twilio. You can pick a scenario: answer with a schedule, answer without a time, silence (the question is repeated, then “No se recibió una respuesta”), busy, or no answer. Simulated calls carry `simulated: true`, the transcript is prefixed `[SIMULADO]`, and the UI shows purple **SIMULADO** badges with a dashed transcript box.
+When Twilio and the public URL are configured, the page **only makes real calls**: the demo option is not shown. When real calls aren’t possible, **“Modo demostración”** is shown and forced on; it runs the same state machine on the server without contacting Twilio. You can pick a scenario: answer with a schedule, answer without a time, silence (the question is repeated, then “No se recibió una respuesta”), busy, or no answer. Simulated calls carry `simulated: true`, the transcript is prefixed `[SIMULADO]`, and the UI shows purple **SIMULADO** badges with a dashed transcript box.
 
 ## Testing
 

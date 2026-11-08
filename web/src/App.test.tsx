@@ -75,10 +75,44 @@ describe('App', () => {
     // e.g. ./start.sh restarted the server with a tunnel URL while this tab stayed open
     current = { ...config, realCallsPossible: true, missing: [], fromNumberConfigured: true };
     window.dispatchEvent(new Event('focus'));
-    await waitFor(() => expect(demo.disabled).toBe(false));
-    expect(demo.checked).toBe(false);
+    // Real calls only: the demo option disappears.
+    await waitFor(() => expect(screen.queryByLabelText(/Modo demostración/)).toBeNull());
     expect(screen.queryByText(/Las llamadas reales están desactivadas/)).toBeNull();
     expect(screen.getByRole('button', { name: /^📞 Llamar$/ })).toBeTruthy();
+  });
+
+  it('logs in automatically from a login link (#clave=…) and removes the password from the address bar', async () => {
+    let loggedIn = false;
+    const logins: string[] = [];
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/health') return json({ ok: true, authenticated: loggedIn });
+      if (url === '/api/session' && init?.method === 'POST') {
+        const { password } = JSON.parse(String(init.body));
+        logins.push(password);
+        loggedIn = password === 'ab-12 cd';
+        return loggedIn ? json({ ok: true }) : json({ error: 'Contraseña incorrecta.' }, 401);
+      }
+      if (url === '/api/config') return json(config);
+      return json({}, 404);
+    });
+    window.history.replaceState(null, '', '/?x=1#clave=ab-12%20cd');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Nueva llamada' })).toBeTruthy();
+    expect(logins).toEqual(['ab-12 cd']);
+    expect(window.location.hash).toBe('');
+    expect(window.location.search).toBe('?x=1');
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('shows the normal login form when the link has no password', async () => {
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/health' ? json({ ok: true, authenticated: false }) : json({}, 404),
+    );
+    window.history.replaceState(null, '', '/');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Acceso' })).toBeTruthy();
+    expect(screen.getByLabelText('Contraseña')).toHaveProperty('value', '');
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/session', expect.anything());
   });
 
   it('pre-fills the number configured on the server', async () => {
