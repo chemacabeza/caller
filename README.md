@@ -33,7 +33,8 @@ Dockerfile, docker-compose.yml, start.sh, stop.sh
 ```bash
 cp server/.env.example server/.env   # start.sh does this for you if missing
 ./start.sh                           # http://localhost:3001 + Cloudflare quick tunnel for real calls (no account)
-./start.sh --cloudflare              # same as above
+./start.sh --cloudflare              # same as above (a running tunnel is reused, so the URL stays the same)
+./start.sh --new-url                 # force a new Cloudflare tunnel URL
 ./start.sh --tunnel                  # …or an ngrok tunnel with a fixed domain (see below)
 ./start.sh --local                   # no tunnel (demo mode unless PUBLIC_BASE_URL is set)
 ./stop.sh                            # stop (add --clean to remove the image)
@@ -113,7 +114,7 @@ Or use the bundled container: set `NGROK_AUTHTOKEN` and `NGROK_DOMAIN` in `serve
 2. passes that URL to the app as `TUNNEL_PUBLIC_BASE_URL`, which overrides `PUBLIC_BASE_URL` (your `.env` is not modified);
 3. checks that `/api/health` answers through the tunnel and that an unsigned webhook is rejected with 403.
 
-The URL changes every time the tunnel starts, so the container is not auto-restarted; just run `./start.sh --cloudflare` again. Quick tunnels have no uptime guarantee and are meant for testing. Note that the UI is also reachable through the tunnel URL, protected by `APP_PASSWORD`, so set a strong one.
+Quick-tunnel URLs are random, so `./start.sh` **reuses the tunnel that is already running** and the URL stays the same across restarts of the app. It only changes after `./stop.sh`, a reboot, if Cloudflare drops the tunnel (it then creates a new one automatically), or with `./start.sh --new-url`. The container is not auto-restarted, because a restart would change the URL. For a URL that never changes, use ngrok with a free static domain (below) or a Cloudflare named tunnel on your own domain. Quick tunnels have no uptime guarantee and are meant for testing. Note that the UI is also reachable through the tunnel URL, protected by `APP_PASSWORD`, so set a strong one.
 
 Without Docker: `cloudflared tunnel --url http://localhost:3001`, then put the printed URL in `PUBLIC_BASE_URL` (or `TUNNEL_PUBLIC_BASE_URL`) and restart the backend.
 

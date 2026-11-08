@@ -3,7 +3,9 @@
 #
 #   ./start.sh              build (if needed), start the app on http://localhost:3001 and a
 #                           Cloudflare quick tunnel for real calls (same as --cloudflare)
-#   ./start.sh --cloudflare same as above (no account, new URL each start)
+#   ./start.sh --cloudflare same as above (no account). A tunnel that is still running is reused,
+#                           so its URL stays the same; it changes after ./stop.sh or a reboot
+#   ./start.sh --new-url    force a new Cloudflare quick tunnel (new URL)
 #   ./start.sh --tunnel     use an ngrok tunnel instead (needs NGROK_AUTHTOKEN/NGROK_DOMAIN)
 #   ./start.sh --local      start without any tunnel (demo mode unless PUBLIC_BASE_URL is set)
 #   ./start.sh --no-build   start without rebuilding the image
@@ -15,14 +17,16 @@ cd "$(dirname "$0")"
 NGROK=false
 CLOUDFLARE=false
 LOCAL=false
+NEW_URL=false
 BUILD=true
 for arg in "$@"; do
   case "$arg" in
     --tunnel|--ngrok) NGROK=true ;;
     --cloudflare) CLOUDFLARE=true ;;
     --local|--no-tunnel) LOCAL=true ;;
+    --new-url) NEW_URL=true ;;
     --no-build) BUILD=false ;;
-    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Opción desconocida: $arg (use --help)" >&2; exit 2 ;;
   esac
 done
@@ -79,19 +83,40 @@ if $NGROK; then
   PUBLIC_URL="https://$NGROK_DOMAIN"
 fi
 
+# URL of the quick tunnel in the running cloudflared container, if any.
+cloudflared_url() {
+  docker compose --profile cloudflare logs cloudflared 2>/dev/null \
+    | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | grep -v '^https://api\.' | tail -n1 || true
+}
+
 if $CLOUDFLARE; then
-  # Start a fresh quick tunnel first: its random URL must be known before the app starts.
-  # Creating a quick tunnel occasionally fails on Cloudflare's side, so retry a few times.
   TUNNEL_PUBLIC_BASE_URL=""
+  # Quick tunnel URLs are random, so keep the URL stable by reusing a tunnel that is still alive.
+  # Cloudflare answers 530 (or DNS fails, 000) once a quick tunnel is gone; any other code means
+  # the tunnel is up (502 is fine: it only means the app behind it is not running right now).
+  if ! $NEW_URL && [[ -n "$(docker compose --profile cloudflare ps -q --status running cloudflared 2>/dev/null)" ]]; then
+    existing="$(cloudflared_url)"
+    if [[ -n "$existing" ]]; then
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$existing/api/health" || true)"
+      if [[ "$code" != "000" && "$code" != "530" ]]; then
+        TUNNEL_PUBLIC_BASE_URL="$existing"
+        echo "Se reutiliza el túnel de Cloudflare en marcha (la URL no cambia): $existing"
+      else
+        echo "El túnel anterior ($existing) ya no responde; se crea uno nuevo."
+      fi
+    fi
+  fi
+  # Otherwise start a fresh quick tunnel: its random URL must be known before the app starts.
+  # Creating a quick tunnel occasionally fails on Cloudflare's side, so retry a few times.
   for attempt in 1 2 3; do
+    [[ -n "$TUNNEL_PUBLIC_BASE_URL" ]] && break
     docker compose --profile cloudflare up -d --force-recreate --no-deps cloudflared
     echo -n "Esperando la URL del túnel de Cloudflare (intento $attempt/3)"
     for _ in $(seq 1 60); do
-      logs="$(docker compose --profile cloudflare logs cloudflared 2>/dev/null || true)"
       # api.trycloudflare.com is Cloudflare's API (it appears in error messages), not our tunnel.
-      TUNNEL_PUBLIC_BASE_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' <<<"$logs" | grep -v '^https://api\.' | tail -n1 || true)"
+      TUNNEL_PUBLIC_BASE_URL="$(cloudflared_url)"
       [[ -n "$TUNNEL_PUBLIC_BASE_URL" ]] && break
-      grep -q 'failed to request quick Tunnel' <<<"$logs" && break
+      docker compose --profile cloudflare logs cloudflared 2>/dev/null | grep -q 'failed to request quick Tunnel' && break
       echo -n "."
       sleep 1
     done
@@ -155,7 +180,8 @@ fi
 echo
 echo "Aplicación disponible en: http://localhost:${APP_PORT}"
 if $CLOUDFLARE; then
-  echo "Túnel HTTPS (Cloudflare, cambia en cada arranque): $PUBLIC_URL"
+  echo "Túnel HTTPS (Cloudflare): $PUBLIC_URL"
+  echo "La URL se mantiene en los próximos ./start.sh; cambia tras ./stop.sh, un reinicio del equipo o ./start.sh --new-url."
   echo "La aplicación usa esta URL automáticamente para los webhooks de Twilio."
 fi
 $NGROK && echo "Túnel HTTPS (ngrok): $PUBLIC_URL   ·   Inspector ngrok: http://localhost:4040"
