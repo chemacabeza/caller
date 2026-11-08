@@ -43,6 +43,8 @@ If `APP_PASSWORD` is empty, a temporary password is printed by `start.sh` (and i
 
 Without Twilio configuration the app runs in **demo mode** only.
 
+The containers use the host's network (`network_mode: host`, Linux), so they keep internet access when a VPN with a kill switch (e.g. Surfshark/WireGuard) blocks Docker's bridge network. The app listens on `127.0.0.1` only (`HOST`), so it isn't reachable from your LAN; only the tunnel exposes it.
+
 ## Running locally without Docker (development)
 
 Requires Node 22+.
@@ -64,6 +66,7 @@ Open http://localhost:5173 in development, or http://localhost:3001 after `npm r
 | `TWILIO_AUTH_TOKEN` | for real calls | Auth token (also used to validate webhook signatures) |
 | `TWILIO_FROM_NUMBER` | for real calls | A Twilio number you own, or a verified caller ID, in E.164. Must differ from the destination. `TWILIO_PHONE_NUMBER` is accepted as an alias. |
 | `PUBLIC_BASE_URL` | for real calls | Public **HTTPS** URL forwarding to port 3001, no trailing slash |
+| `HOST` | no | Interface to listen on. Docker Compose sets `127.0.0.1`; empty = all interfaces |
 | `TUNNEL_PUBLIC_BASE_URL` | no | Set automatically by `./start.sh --cloudflare`; overrides `PUBLIC_BASE_URL` |
 | `DEFAULT_DESTINATION_NUMBER` | no | Number pre-filled in the form (Spain, France, Germany, Italy, China, or USA/Canada), default `+34 955 74 88 35`. Still editable in the UI. |
 | `SAVED_NUMBERS` | no | Comma-separated numbers shown as one-tap buttons under the phone field, e.g. `+86 138 0013 8000, +1-707-555-0123, +33 6 39 98 12 34, +491711234567` |

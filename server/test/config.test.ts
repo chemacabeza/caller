@@ -46,3 +46,11 @@ describe('SAVED_NUMBERS', () => {
     expect(problem?.params).toEqual({ numbers: '+44 20 7946 0958' });
   });
 });
+
+describe('loadConfig HOST', () => {
+  it('listens on all interfaces unless HOST is set', () => {
+    expect(loadConfig({}).host).toBeUndefined();
+    expect(loadConfig({ HOST: ' ' }).host).toBeUndefined();
+    expect(loadConfig({ HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
+  });
+});

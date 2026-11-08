@@ -6,6 +6,8 @@ export const FALLBACK_DESTINATION = '+34 955 74 88 35';
 
 export interface AppConfig {
   port: number;
+  /** Interface to listen on (HOST). Undefined = all interfaces. */
+  host?: string;
   /** Twilio credentials. Empty strings when not configured. */
   twilioAccountSid: string;
   twilioAuthToken: string;
@@ -63,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const publicBaseUrl = (env.TUNNEL_PUBLIC_BASE_URL || env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
   return {
     port: int(env.PORT, 3001, 1, 65535),
+    host: env.HOST?.trim() || undefined,
     twilioAccountSid: (env.TWILIO_ACCOUNT_SID ?? '').trim(),
     twilioAuthToken: (env.TWILIO_AUTH_TOKEN ?? '').trim(),
     // TWILIO_PHONE_NUMBER is accepted as an alias.

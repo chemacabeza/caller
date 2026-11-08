@@ -155,19 +155,46 @@ function Caller({ onUnauthorized }: { onUnauthorized: () => void }) {
     [onUnauthorized],
   );
 
+  // Last known value of realCallsPossible, so a refresh only changes the demo checkbox when the
+  // server's capability actually changes (it never overrides the user's own choice otherwise).
+  const realCallsRef = useRef<boolean | null>(null);
   useEffect(() => {
-    api
-      .config()
-      .then((c) => {
-        setConfig(c);
-        setDemo(!c.realCallsPossible);
-        // Pre-fill the server's DEFAULT_DESTINATION_NUMBER unless the user already typed one.
-        if (!numberEdited.current && c.defaults?.number) setNumber(c.defaults.number);
-      })
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 401) onUnauthorized();
-        else setConfigError(toMessage(err));
-      });
+    let cancelled = false;
+    const load = () =>
+      api
+        .config()
+        .then((c) => {
+          if (cancelled) return;
+          setConfig(c);
+          setConfigError(null);
+          if (realCallsRef.current !== c.realCallsPossible) {
+            realCallsRef.current = c.realCallsPossible;
+            setDemo(!c.realCallsPossible);
+          }
+          // Pre-fill the server's DEFAULT_DESTINATION_NUMBER unless the user already typed one.
+          if (!numberEdited.current && c.defaults?.number) setNumber(c.defaults.number);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          if (err instanceof ApiError && err.status === 401) onUnauthorized();
+          else setConfigError(toMessage(err));
+        });
+    load();
+    // The server may be restarted with a new configuration (e.g. ./start.sh creates a new tunnel and
+    // enables real calls) while this tab stays open; re-read it when the tab becomes visible again
+    // and every 30 s, so the page never stays stuck in demo mode.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const timer = window.setInterval(onVisible, 30_000);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.clearInterval(timer);
+    };
   }, [onUnauthorized]);
 
   const callId = call?.id;

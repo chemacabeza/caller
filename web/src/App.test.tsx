@@ -63,6 +63,24 @@ describe('App', () => {
     expect(demo.disabled).toBe(true);
   });
 
+  it('leaves demo mode once the server is reconfigured for real calls, without a reload', async () => {
+    let current: typeof config = config;
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/config' ? json(current) : url === '/api/health' ? json({ ok: true, authenticated: true }) : json({}, 404),
+    );
+    render(<App />);
+    const demo = (await screen.findByLabelText(/Modo demostración/)) as HTMLInputElement;
+    await waitFor(() => expect(demo.disabled).toBe(true));
+    expect(demo.checked).toBe(true);
+    // e.g. ./start.sh restarted the server with a tunnel URL while this tab stayed open
+    current = { ...config, realCallsPossible: true, missing: [], fromNumberConfigured: true };
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(demo.disabled).toBe(false));
+    expect(demo.checked).toBe(false);
+    expect(screen.queryByText(/Las llamadas reales están desactivadas/)).toBeNull();
+    expect(screen.getByRole('button', { name: /^📞 Llamar$/ })).toBeTruthy();
+  });
+
   it('pre-fills the number configured on the server', async () => {
     fetchMock.mockImplementation((url: string) =>
       url === '/api/config'

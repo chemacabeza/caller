@@ -1,3 +1,7 @@
+# All services use the host's network stack (network_mode: host). Docker's bridge network has no
+# internet access when a VPN with a kill switch (e.g. Surfshark/WireGuard) is active, which broke
+# both the Twilio API calls and the tunnels. The app therefore binds to 127.0.0.1 only, so it is
+# still not reachable from the LAN; the tunnels connect to it on 127.0.0.1.
 services:
   app:
     build: .
@@ -8,12 +12,17 @@ services:
     env_file:
       - path: server/.env
         required: false
+    network_mode: host
     environment:
-      PORT: "3001"
+      HOST: 127.0.0.1
+      PORT: ${APP_PORT:-3001}
       # Filled in by ./start.sh --cloudflare with the quick tunnel's URL; empty otherwise.
       TUNNEL_PUBLIC_BASE_URL: ${TUNNEL_PUBLIC_BASE_URL:-}
-    ports:
-      - "127.0.0.1:${APP_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT}/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
 
   # Optional HTTPS tunnels so Twilio can reach the webhooks (use one of them).
 
@@ -24,7 +33,8 @@ services:
     image: cloudflare/cloudflared:latest
     profiles: ["cloudflare"]
     restart: "no"
-    command: ["tunnel", "--no-autoupdate", "--url", "http://app:3001"]
+    network_mode: host
+    command: ["tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:${APP_PORT:-3001}"]
 
   # ngrok with a fixed domain.
   # Enabled with:  ./start.sh --tunnel   (needs NGROK_AUTHTOKEN and NGROK_DOMAIN in server/.env)
@@ -33,9 +43,18 @@ services:
     profiles: ["tunnel"]
     depends_on: [app]
     restart: unless-stopped
+    network_mode: host
     # Only the ngrok token is passed (not the Twilio secrets). start.sh exports these from server/.env.
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
-    command: ["http", "--url=${NGROK_DOMAIN:-}", "app:3001"]
-    ports:
-      - "127.0.0.1:4040:4040"
+    # The custom config keeps the inspector on 127.0.0.1:4040 (the image default is 0.0.0.0).
+    configs:
+      - source: ngrok_config
+        target: /etc/ngrok-local.yml
+    command: ["http", "--config=/etc/ngrok-local.yml", "--url=${NGROK_DOMAIN:-}", "127.0.0.1:${APP_PORT:-3001}"]
+
+configs:
+  ngrok_config:
+    content: |
+      version: "2"
+      web_addr: 127.0.0.1:4040
