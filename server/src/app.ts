@@ -35,7 +35,7 @@ export function createApp({ cfg, provider, demoStepMs }: AppDeps) {
 
   const store = new CallStore(cfg.transcriptTtlMinutes);
   const demo = new DemoSimulator(store, demoStepMs);
-  const auth = new Auth(cfg.appPassword, cfg.cookieSecure);
+  const auth = new Auth(cfg.appPassword, cfg.cookieSecure, cfg.sessionDays);
   const missing = missingTwilioConfig(cfg);
   const realCallsPossible = missing.length === 0 && !configProblems(cfg).some((p) => p.code.startsWith('problem.public_url'));
   let voice: VoiceProvider | undefined = provider;

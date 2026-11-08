@@ -80,6 +80,7 @@ Open http://localhost:5173 in development, or http://localhost:3001 after `npm r
 | `MAX_CALL_SECONDS` | no | Hard limit, default and max 120 |
 | `APP_PASSWORD` | recommended | Password for the web UI |
 | `COOKIE_SECURE` | no | `true` if you open the UI over HTTPS |
+| `SESSION_DAYS` | no | Days a browser stays logged in after entering the password, even across restarts (default 365, max 400). Changing `APP_PASSWORD` logs every browser out |
 | `TRANSCRIPT_TTL_MINUTES` | no | How long a finished call stays in memory (default 60) |
 
 Voice names were checked against Twilio’s [text-to-speech docs](https://www.twilio.com/docs/voice/twiml/say/text-speech) and [`<Gather>` docs](https://www.twilio.com/docs/voice/twiml/gather) (November 2026). Twilio notes that third-party voices can change, so the voice is configurable.
@@ -123,7 +124,7 @@ Always point the tunnel at the **backend port 3001**, not Vite’s 5173. Restart
 ## Security
 
 - Twilio credentials live only on the server. The browser never sees them.
-- The call-control API requires a password login: an HttpOnly, `SameSite=Strict` session cookie, plus a JSON-only rule as CSRF defence, and brute-force throttling.
+- The call-control API requires a password login: an HttpOnly, `SameSite=Strict` session cookie, plus a JSON-only rule as CSRF defence, and brute-force throttling. The cookie is a token signed with a key derived from `APP_PASSWORD` (HMAC-SHA256), so you only enter the password once per browser: it stays valid across restarts for `SESSION_DAYS` (default 365). *Cerrar sesión* revokes it (remembered until the next restart; the browser also deletes the cookie). Change `APP_PASSWORD` to log every browser out.
 - Every Twilio webhook is checked against `X-Twilio-Signature` using the Auth Token and `PUBLIC_BASE_URL`. Invalid signatures get 403. Callbacks whose `CallSid` doesn’t match the call are ignored.
 - **Duplicate calls are prevented:** only one call can be active at a time (409 otherwise), with a lock covering the creation window. The *Llamar* button also disables itself synchronously.
 - Phone numbers are normalized and validated server-side. Supported destinations:

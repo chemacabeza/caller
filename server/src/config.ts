@@ -50,6 +50,8 @@ export interface AppConfig {
   /** Serve the built frontend from this directory, if it exists. */
   staticDir: string;
   cookieSecure: boolean;
+  /** Days a browser stays logged in after entering the password (SESSION_DAYS). */
+  sessionDays: number;
 }
 
 function int(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -89,6 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     validateTwilioSignature: env.TWILIO_VALIDATE_SIGNATURE !== 'false',
     staticDir: env.STATIC_DIR ?? new URL('../../web/dist', import.meta.url).pathname,
     cookieSecure: env.COOKIE_SECURE === 'true',
+    sessionDays: int(env.SESSION_DAYS, 365, 1, 400),
   };
 }
 

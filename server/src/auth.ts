@@ -1,9 +1,10 @@
-import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash, createHmac } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { errorBody, msg } from './messages.js';
 
 export const COOKIE_NAME = 'llamadas_sid';
-const SESSION_HOURS = 12;
+/** Default "remember this browser" period. Browsers cap cookie lifetimes at about 400 days. */
+export const DEFAULT_SESSION_DAYS = 365;
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -27,12 +28,39 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
-/** Password login with an HttpOnly, SameSite=Strict session cookie. Sessions are kept in memory. */
+/**
+ * Password login with an HttpOnly, SameSite=Strict session cookie.
+ *
+ * The cookie is a signed token `<id>.<expiry ms>.<HMAC-SHA256>` keyed on APP_PASSWORD, so the browser
+ * stays logged in across server restarts (no session storage on disk), and changing APP_PASSWORD logs
+ * every browser out. Logged-out ids are remembered in memory until they expire.
+ */
 export class Auth {
-  private sessions = new Map<string, number>(); // id -> expiry (ms)
+  private revoked = new Map<string, number>(); // id -> expiry (ms)
   private failures = new Map<string, { count: number; until: number }>();
+  private key: Buffer;
+  private sessionMs: number;
 
-  constructor(private password: string, private cookieSecure: boolean) {}
+  constructor(private password: string, private cookieSecure: boolean, sessionDays = DEFAULT_SESSION_DAYS) {
+    this.key = createHmac('sha256', password).update('llamadas-session-v1').digest();
+    this.sessionMs = sessionDays * 24 * 3600_000;
+  }
+
+  private sign(payload: string): string {
+    return createHmac('sha256', this.key).update(payload).digest('base64url');
+  }
+
+  /** Session id of a valid, unexpired, not logged-out token. */
+  private verify(token: string | undefined): { id: string; exp: number } | undefined {
+    const parts = (token ?? '').split('.');
+    if (parts.length !== 3) return undefined;
+    const [id, expRaw, mac] = parts;
+    const exp = Number(expRaw);
+    if (!id || !Number.isFinite(exp) || exp < Date.now()) return undefined;
+    if (!safeEqual(mac, this.sign(`${id}.${expRaw}`))) return undefined;
+    if (this.revoked.has(id)) return undefined;
+    return { id, exp };
+  }
 
   login(req: Request, res: Response): void {
     const ip = req.ip ?? 'unknown';
@@ -50,13 +78,13 @@ export class Auth {
       return;
     }
     this.failures.delete(ip);
-    const id = randomBytes(32).toString('base64url');
-    this.sessions.set(id, Date.now() + SESSION_HOURS * 3600_000);
-    res.cookie(COOKIE_NAME, id, {
+    const id = randomBytes(24).toString('base64url');
+    const exp = String(Date.now() + this.sessionMs);
+    res.cookie(COOKIE_NAME, `${id}.${exp}.${this.sign(`${id}.${exp}`)}`, {
       httpOnly: true,
       sameSite: 'strict',
       secure: this.cookieSecure,
-      maxAge: SESSION_HOURS * 3600_000,
+      maxAge: this.sessionMs,
       path: '/',
     });
     res.json({ ok: true });
@@ -68,21 +96,17 @@ export class Auth {
   }
 
   logout(req: Request, res: Response): string | undefined {
-    const id = parseCookies(req.headers.cookie)[COOKIE_NAME];
-    if (id) this.sessions.delete(id);
+    const session = this.verify(parseCookies(req.headers.cookie)[COOKIE_NAME]);
     res.clearCookie(COOKIE_NAME, { path: '/' });
-    return id;
+    if (!session) return undefined;
+    const now = Date.now();
+    for (const [id, exp] of this.revoked) if (exp < now) this.revoked.delete(id);
+    this.revoked.set(session.id, session.exp);
+    return session.id;
   }
 
   sessionOf(req: Request): string | undefined {
-    const id = parseCookies(req.headers.cookie)[COOKIE_NAME];
-    if (!id) return undefined;
-    const exp = this.sessions.get(id);
-    if (!exp || exp < Date.now()) {
-      this.sessions.delete(id);
-      return undefined;
-    }
-    return id;
+    return this.verify(parseCookies(req.headers.cookie)[COOKIE_NAME])?.id;
   }
 
   require = (req: Request, res: Response, next: NextFunction): void => {
