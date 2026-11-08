@@ -39,7 +39,7 @@ cp server/.env.example server/.env   # start.sh does this for you if missing
 ./stop.sh                            # stop (add --clean to remove the image)
 ```
 
-If `APP_PASSWORD` is empty, a temporary password is printed by `start.sh` (and in `docker compose logs app`).
+`start.sh` prints the web UI password (`APP_PASSWORD`) next to the links when it finishes. If `APP_PASSWORD` is empty, a temporary password is generated and printed instead (also in `docker compose logs app`).
 
 Without Twilio configuration the app runs in **demo mode** only.
 

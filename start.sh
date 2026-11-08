@@ -159,7 +159,11 @@ if $CLOUDFLARE; then
   echo "La aplicación usa esta URL automáticamente para los webhooks de Twilio."
 fi
 $NGROK && echo "Túnel HTTPS (ngrok): $PUBLIC_URL   ·   Inspector ngrok: http://localhost:4040"
-if [[ -z "$(env_value APP_PASSWORD)" ]]; then
+# Show the web UI password next to the links (only in this terminal; it is never sent anywhere).
+APP_PASSWORD_VALUE="$(env_value APP_PASSWORD)"
+if [[ -n "$APP_PASSWORD_VALUE" ]]; then
+  echo "Contraseña de la interfaz (APP_PASSWORD en $ENV_FILE): $APP_PASSWORD_VALUE"
+else
   docker compose logs app 2>/dev/null | grep -i "contraseña temporal" | tail -n1 || true
 fi
 echo "Para detenerla: ./stop.sh"
